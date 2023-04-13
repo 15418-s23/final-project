@@ -26,7 +26,7 @@ std::pair< std::vector<Vec3>, std::vector<Face> > load_obj(const std::string& fi
 
     std::string line;
     while (std::getline(file, line)) {
-        if (line[0] == 'v') {
+        if ((line[0] == 'v') && (line[1] == ' ')) {
             std::istringstream iss(line);
             char c;
             float x, y, z;
