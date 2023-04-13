@@ -1,15 +1,26 @@
-EXECUTABLE := mcd # Mesh Collision Detection, not McDonalds...
+# Variables
+TARGET = mcd # Mesh Collision Detection, not McDonalds...
+CXX = clang++
+CXXFLAGS = -std=c++17 -O3 -Wall -Wextra
+SRC_DIR = src
+LIB_DIR = $(SRC_DIR)/lib
 
 
-SOURCES := src/*.cpp
-HEADERS := src/*.h
+# Source files
+SRCS = $(wildcard $(SRC_DIR)/*.cpp)
 
 
-CXX := clang++
-CXXFLAGS := -O3 -Wall -g
+# Build rules
+all: $(TARGET)
+
+$(TARGET):
+	$(CXX) $(CXXFLAGS) $(SRCS) -o $@
 
 
-all: $(EXECUTABLE)
+# Clean up
+clean:
+	rm -rf $(TARGET)
 
-$(EXECUTABLE): 
-	$(CXX) -o $@ $(CXXFLAGS) $(SOURCES) $(HEADERS)
+
+# Phony targets
+.PHONY: all clean
