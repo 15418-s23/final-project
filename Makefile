@@ -1,5 +1,4 @@
 # Variables
-TARGET = mcd # Mesh Collision Detection, not McDonalds...
 CXX = clang++
 CXXFLAGS = -std=c++17 -O3 -Wall -Wextra
 SRC_DIR = src
@@ -11,15 +10,18 @@ SRCS = $(wildcard $(SRC_DIR)/*.cpp)
 
 
 # Build rules
-all: $(TARGET)
+all: mcd-sequential mcd-parallel
 
-$(TARGET):
+mcd-sequential:
 	$(CXX) $(CXXFLAGS) $(SRCS) -o $@
+
+mcd-parallel:
+	$(CXX) $(CXXFLAGS) -D PARALLEL $(SRCS) -o $@
 
 
 # Clean up
 clean:
-	rm -rf $(TARGET)
+	rm -rf mcd-sequential mcd-parallel
 
 
 # Phony targets
