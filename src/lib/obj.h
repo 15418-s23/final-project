@@ -18,7 +18,7 @@ struct Face {
 std::pair< std::vector<Vec3>, std::vector<Face> > load_obj(const std::string& filename) {
     std::ifstream file(filename);
     if (!file) {
-        throw std::runtime_error("cannot open file");
+        throw std::runtime_error("cannot open file: " + filename);
     }
 
     std::vector<Vec3> vertices;
