@@ -7,6 +7,12 @@
 #include "lib/vec3.h"
 #include "lib/obj.h"
 
+#ifdef PARALLEL
+#include "mcd-parallel.h"
+#else
+#include "mcd-sequential.h"
+#endif
+
 
 int main(int argc, char *argv[]) {
 
@@ -47,9 +53,10 @@ int main(int argc, char *argv[]) {
             iss >> x >> y >> z;
             base_coordinates.push_back(Vec3(x, y, z));
         }
-        
+
         line_number++;
     }
+
 
     /* Load the models */
     std::vector< std::vector<Vec3> > model_vertices;
@@ -71,7 +78,10 @@ int main(int argc, char *argv[]) {
     }
 
 
-    // auto [vertices, faces] = load_obj(model_file_path);
+    /* Run the MCD algorithm */
+    double min_distance = mcd(model_vertices, model_faces);
+
+    std::cout << min_distance << std::endl;
 
     return 0;
 }

@@ -3,5 +3,5 @@
 
 double mcd(std::vector< std::vector<Vec3> > model_vertices,
            std::vector< std::vector<Face> > model_faces) {
-    return 0.0;
+    return 1.0;
 }
