@@ -6,6 +6,7 @@
 
 #include "lib/vec3.h"
 #include "lib/obj.h"
+#include "lib/timing.h"
 
 #ifdef PARALLEL
 #include "mcd-parallel.h"
@@ -79,9 +80,12 @@ int main(int argc, char *argv[]) {
 
 
     /* Run the MCD algorithm */
+    Timer timer;
     double min_distance = mcd(model_vertices, model_faces);
+    double elapsed = timer.elapsed();
 
     std::cout << min_distance << std::endl;
+    std::cout << elapsed << std::endl;
 
     return 0;
 }
