@@ -1,0 +1,6 @@
+# A single triangle on the x-z plane
+# NOT a valid object, for test purposes only
+v 0.0 0.0 0.0
+v 0.0 0.0 1.0
+v 1.0 0.0 1.0
+f 1//1 2//2 3//3
