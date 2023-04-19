@@ -16,8 +16,8 @@ static inline bool line_face_intersect(const Vec3& v1, const Vec3& v2,
     Vec3 ev = v2 - v1;
 
     // compute the determinant
-    Vec3 h = cross(eu2, ev);
-    double det = static_cast<double>(dot(eu1, h));
+    Vec3 h = cross(eu1, ev);
+    double det = static_cast<double>(dot(eu2, h));
 
     // if the determinant is zero, the faces are parallel
     if (det <= std::numeric_limits<double>::epsilon()) {
