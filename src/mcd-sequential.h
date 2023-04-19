@@ -43,14 +43,13 @@ static inline double face_to_face_distance(const Vec3& v1, const Vec3& v2, const
     // then check if the faces are parallel
     Vec3 normal_v = cross(v2 - v1, v3 - v1).normalize();
     Vec3 normal_u = cross(u2 - u1, u3 - u1).normalize();
-    if (normal_v == normal_u) {
-        return dot(v1 - u1, normal_v);
-    }
-
 #ifdef DEBUG
     std::cout << "normal_v: " << normal_v << std::endl;
     std::cout << "normal_u: " << normal_u << std::endl;
 #endif
+    if (normal_v == normal_u) {
+        return std::abs(dot(v1 - u1, normal_v));
+    }
 
     // if not, find the minimum distance 
     double min_distance = std::numeric_limits<double>::max();
@@ -61,17 +60,17 @@ static inline double face_to_face_distance(const Vec3& v1, const Vec3& v2, const
     min_distance = std::min(min_distance, point_to_face_distance(v3, u1, u2, u3));
 
     // find the minimum distance between face u and the edges of face v
-    min_distance = std::min(min_distance, edge_to_face_distance(v1, v2, u1, u2, u3));
-    min_distance = std::min(min_distance, edge_to_face_distance(v2, v3, u1, u2, u3));
-    min_distance = std::min(min_distance, edge_to_face_distance(v3, v1, u1, u2, u3));
+    min_distance = std::min(min_distance, line_to_face_distance(v1, v2, u1, u2, u3));
+    min_distance = std::min(min_distance, line_to_face_distance(v2, v3, u1, u2, u3));
+    min_distance = std::min(min_distance, line_to_face_distance(v3, v1, u1, u2, u3));
 
 #ifdef DEBUG
     std::cout << "point_to_face_distance(v1, u1, u2, u3): " << point_to_face_distance(v1, u1, u2, u3) << std::endl;
     std::cout << "point_to_face_distance(v2, u1, u2, u3): " << point_to_face_distance(v2, u1, u2, u3) << std::endl;
     std::cout << "point_to_face_distance(v3, u1, u2, u3): " << point_to_face_distance(v3, u1, u2, u3) << std::endl;
-    std::cout << "edge_to_face_distance(v1, v2, u1, u2, u3): " << edge_to_face_distance(v1, v2, u1, u2, u3) << std::endl;
-    std::cout << "edge_to_face_distance(v2, v3, u1, u2, u3): " << edge_to_face_distance(v2, v3, u1, u2, u3) << std::endl;
-    std::cout << "edge_to_face_distance(v3, v1, u1, u2, u3): " << edge_to_face_distance(v3, v1, u1, u2, u3) << std::endl;
+    std::cout << "line_to_face_distance(v1, v2, u1, u2, u3): " << line_to_face_distance(v1, v2, u1, u2, u3) << std::endl;
+    std::cout << "line_to_face_distance(v2, v3, u1, u2, u3): " << line_to_face_distance(v2, v3, u1, u2, u3) << std::endl;
+    std::cout << "line_to_face_distance(v3, v1, u1, u2, u3): " << line_to_face_distance(v3, v1, u1, u2, u3) << std::endl;
 #endif
 
     return min_distance;
