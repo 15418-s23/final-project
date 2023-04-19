@@ -11,18 +11,25 @@ SRCS = $(wildcard $(SRC_DIR)/*.cpp)
 
 # Build rules
 all: mcd-sequential mcd-parallel
+debug: mcd-sequential-debug mcd-parallel-debug
 
 mcd-sequential:
-	$(CXX) $(CXXFLAGS) $(SRCS) -o $@
+	$(CXX) $(CXXFLAGS) $(CONFIG) $(SRCS) -o $@
+
+mcd-sequential-debug:
+	$(CXX) $(CXXFLAGS) $(CONFIG) -D DEBUG $(SRCS) -o $@
 
 mcd-parallel:
-	$(CXX) $(CXXFLAGS) -D PARALLEL $(SRCS) -o $@
+	$(CXX) $(CXXFLAGS) $(CONFIG) -D PARALLEL $(SRCS) -o $@
+
+mcd-parallel-debug:
+	$(CXX) $(CXXFLAGS) $(CONFIG) -D DEBUG -D PARALLEL $(SRCS) -o $@
 
 
 # Clean up
 clean:
-	rm -rf mcd-sequential mcd-parallel
+	rm -rf mcd-sequential mcd-parallel mcd-sequential-debug mcd-parallel-debug
 
 
 # Phony targets
-.PHONY: all clean
+.PHONY: all debug clean
