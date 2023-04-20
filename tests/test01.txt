@@ -1,4 +1,4 @@
-// 
+// Two triangles
 ./model/triangle01.obj
 0.000000 0.000000 0.000000
 ./model/triangle02.obj

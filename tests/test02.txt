@@ -1,0 +1,5 @@
+// Two tetrahedra
+./model/tetrahedron01.obj
+0.000000 0.000000 0.000000
+./model/tetrahedron02.obj
+1.000000 0.000000 0.000000
