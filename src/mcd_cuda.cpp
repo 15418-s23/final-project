@@ -8,8 +8,8 @@
 
 int main() {
 
-    auto mesh_1 = open3d::geometry::TriangleMesh::CreateCylinder(0.3, 4.0, 20);
-//    auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(1.0, 20);
+//    auto mesh_1 = open3d::geometry::TriangleMesh::CreateCylinder(0.3, 4.0, 500);
+    auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(1.0, 500);
     mesh_1->ComputeVertexNormals();
     mesh_1->ComputeAdjacencyList();
     mesh_1->PaintUniformColor({0.9, 0.1, 0.1});
@@ -20,7 +20,7 @@ int main() {
         adj1.emplace_back(unordered_set.begin(), unordered_set.end());
     }
 
-    auto mesh_2 = open3d::geometry::TriangleMesh::CreateSphere(1.0, 20);
+    auto mesh_2 = open3d::geometry::TriangleMesh::CreateSphere(1.0, 500);
 //    auto mesh_2 = open3d::geometry::TriangleMesh::CreateCone(1.0, 1.0, 500);
 //    auto mesh_2 = open3d::geometry::TriangleMesh::CreateBox(1.0, 1.0, 1.0);
     mesh_2->ComputeVertexNormals();
@@ -57,34 +57,40 @@ int main() {
                 0.0705929, 0.9950042, -0.0705929,
                 0.0024979, 0.0705929, 0.9975021;
         mesh_1->Rotate(R, mesh_1->GetCenter());
-        R <<0.9950042,  0.0000000,  0.0998334,
-        0.0000000,  1.0000000,  0.0000000,
-        -0.0998334,  0.0000000,  0.995004;
+        R << 0.9950042, 0.0000000, 0.0998334,
+                0.0000000, 1.0000000, 0.0000000,
+                -0.0998334, 0.0000000, 0.995004;
         mesh_2->Rotate(R, mesh_2->GetCenter());
 
         auto begin = std::chrono::high_resolution_clock::now();
-        bool cpucollide;
+
+        bool cpucollide, cudacollide;
         Eigen::Vector3d cpu_point1, cpu_point2, cuda_point1, cuda_point2;
-        mcd_cpu(mesh_1->vertices_, adj1, mesh_2->vertices_, adj2, cpu_point1, cpu_point2, cpucollide, 1e-10);
+
+        auto cpustart = std::chrono::high_resolution_clock::now();
+        mcd_cpu(mesh_1->vertices_, adj1, mesh_2->vertices_, adj2, cpu_point1, cpu_point2, cpucollide, 1e-3);
+        auto cpuend = std::chrono::high_resolution_clock::now();
+
         double cpudist = (cpu_point2 - cpu_point1).norm();
-        bool cudacollide;
-        mcd_cuda(mesh_1->vertices_, adj1, mesh_2->vertices_, adj2, cuda_point1, cuda_point2, cudacollide, 1e-10);
+
+        auto cudastart = std::chrono::high_resolution_clock::now();
+        mcd_cuda(mesh_1->vertices_, adj1, mesh_2->vertices_, adj2, cuda_point1, cuda_point2, cudacollide, 1e-3);
+        auto cudaend = std::chrono::high_resolution_clock::now();
+
         double cudadist = (cuda_point2 - cuda_point1).norm();
-        std::cout << "CPU distance: " << cpudist << " collide: " << cpucollide << " CUDA distance: " << cudadist << " collide: " << cudacollide << std::endl;
+
+        std::cout << "---" << std::endl;
+        std::cout << "CPU  distance: " << cpudist << " collide: " << cpucollide << " time: "
+                  << std::chrono::duration_cast<std::chrono::milliseconds>(cpuend - cpustart).count() << " ms"
+                  << std::endl;
+        std::cout << "CUDA distance: " << cudadist << " collide: " << cudacollide << " time: "
+                  << std::chrono::duration_cast<std::chrono::milliseconds>(cudaend - cudastart).count() << " ms" << std::endl;
 
 //        lineset_1->points_[0] = cpu_point1;
 //        lineset_1->points_[1] = cpu_point2;
 
         lineset_1->points_[0] = cuda_point1;
         lineset_1->points_[1] = cuda_point2;
-
-//        mcd_cuda(mesh_1->vertices_, adj1, mesh_2->vertices_, adj2, lineset_1->points_[0], lineset_1->points_[1], &collide, 1e-6);
-
-//        if (collide) break;
-        auto end = std::chrono::high_resolution_clock::now();
-        std::cout << "Time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << " ms"
-                  << std::endl;
-
         vis.UpdateGeometry(mesh_1);
         vis.UpdateGeometry(mesh_2);
         vis.UpdateGeometry(lineset_1);
