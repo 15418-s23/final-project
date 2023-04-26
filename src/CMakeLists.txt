@@ -1,4 +1,12 @@
 cmake_minimum_required(VERSION 3.17)
+
+set(CMAKE_CUDA_HOST_COMPILER "/usr/bin/g++-10")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -ccbin /usr/bin/g++-10")
+set(CMAKE_BUILD_TYPE Debug)
+set(CUDA_TOOLKIT_ROOT_DIR "/usr/lib/cuda/")
+set(CMAKE_CUDA_COMPILER /usr/bin/nvcc)
+set(CUDA_NVCC_FLAGS "-G -g")
+set(CMAKE_CXX_FLAGS "-O0")
 project(MCD LANGUAGES CXX CUDA)
 
 if(POLICY CMP0091)
@@ -9,9 +17,6 @@ endif()
 
 # Find CUDA
 find_package(CUDA REQUIRED)
-set(CMAKE_BUILD_TYPE Debug)
-set(CUDA_TOOLKIT_ROOT_DIR "/usr/lib/cuda/")
-set(CMAKE_CUDA_COMPILER /usr/bin/nvcc)
 
 find_package(Open3D HINTS ${CMAKE_INSTALL_PREFIX}/lib/cmake)
 
@@ -35,6 +40,7 @@ target_link_libraries(mcd_cpu
         )
 
 # mcd cuda executable
+add_compile_options(-Wall)
 add_executable(mcd_cuda
         mcd_cuda.cpp)
 target_link_libraries(mcd_cuda

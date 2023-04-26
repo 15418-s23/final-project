@@ -7,6 +7,7 @@
 #include "lib/vec3.h"
 #include "lib/obj.h"
 #include "lib/timing.h"
+#include "open3d/Open3D.h"
 
 #ifdef PARALLEL
 #include "mcd-parallel.h"
@@ -16,6 +17,13 @@
 
 
 int main(int argc, char *argv[]) {
+    auto mesh_ptr = std::make_shared<open3d::geometry::TriangleMesh>();
+    open3d::io::ReadTriangleMesh("/mnt/storage/final-project/models/link_4.obj", *mesh_ptr);
+    mesh_ptr->ComputeVertexNormals();
+    open3d::visualization::DrawGeometries({mesh_ptr}, "Mesh", 1600, 900);
+
+
+
 
     /* Check that the user has provided the expected arguments */
     if (argc != 2) {

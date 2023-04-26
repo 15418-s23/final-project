@@ -8,7 +8,8 @@
 
 int main() {
 
-    auto mesh_1 = open3d::geometry::TriangleMesh::CreateCylinder(0.3, 4.0);
+//    auto mesh_1 = open3d::geometry::TriangleMesh::CreateCylinder(0.3, 4.0, 500);
+    auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(1.0, 500);
     mesh_1->ComputeVertexNormals();
     mesh_1->ComputeAdjacencyList();
     mesh_1->PaintUniformColor({0.9, 0.1, 0.1});
@@ -19,7 +20,8 @@ int main() {
         adj1.emplace_back(unordered_set.begin(), unordered_set.end());
     }
 
-    auto mesh_2 = open3d::geometry::TriangleMesh::CreateSphere(1.0);
+    auto mesh_2 = open3d::geometry::TriangleMesh::CreateSphere(1.0, 500);
+//    auto mesh_2 = open3d::geometry::TriangleMesh::CreateBox(1.0, 1.0, 1.0);
     mesh_2->ComputeVertexNormals();
     mesh_2->ComputeAdjacencyList();
     mesh_2->PaintUniformColor({0.1, 0.1, 0.7});
@@ -53,13 +55,17 @@ int main() {
         mesh_1->Rotate(R, mesh_1->GetCenter());
         mesh_2->Rotate(R, mesh_2->GetCenter());
 
-        mcd_cuda( mesh_1->vertices_, adj1, mesh_2->vertices_, adj2, lineset_1->points_[0], lineset_1->points_[1]);
+        auto begin = std::chrono::high_resolution_clock::now();
+        mcd_cuda(mesh_1->vertices_, adj1, mesh_2->vertices_, adj2, lineset_1->points_[0], lineset_1->points_[1], 1e-6);
+        auto end = std::chrono::high_resolution_clock::now();
+        std::cout << "Time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << " ms"
+                  << std::endl;
+
         vis.UpdateGeometry(mesh_1);
         vis.UpdateGeometry(mesh_2);
         vis.UpdateGeometry(lineset_1);
         vis.PollEvents();
         vis.UpdateRender();
-//        usleep(100000);
     }
     return 0;
 }
