@@ -58,14 +58,14 @@ int main() {
     vis.AddGeometry(mesh_3);
     vis.AddGeometry(lineset_1);
 
-
-    std::vector<std::vector<Eigen::Vector3d>> meshes;
-    meshes.emplace_back(mesh_1->vertices_.begin(), mesh_1->vertices_.end());
-    meshes.emplace_back(mesh_2->vertices_.begin(), mesh_2->vertices_.end());
-    std::vector<AABB> aabbs = extract_AABB(meshes);
-    for (int i = 0; i < aabbs.size(); ++i) {
-        tree.insert(aabbs[i]);
-    }
+//
+//    std::vector<std::vector<Eigen::Vector3d>> meshes;
+//    meshes.emplace_back(mesh_1->vertices_.begin(), mesh_1->vertices_.end());
+//    meshes.emplace_back(mesh_2->vertices_.begin(), mesh_2->vertices_.end());
+//    std::vector<AABB> aabbs = extract_AABB(meshes);
+//    for (int i = 0; i < aabbs.size(); ++i) {
+//        tree.insert(aabbs[i]);
+//    }
 
     std::vector<AABB> foundaabbs;
 
