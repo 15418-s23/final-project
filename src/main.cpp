@@ -98,7 +98,7 @@ int main(int argc, char *argv[]) {
     line_set_parallel->points_.emplace_back(0.0, 0.0, 0.0);
     line_set_parallel->points_.emplace_back(5.0, 0.0, 0.0);
     line_set_parallel->lines_.emplace_back(0, 1);
-    line_set_parallel->PaintUniformColor({1.0, 0.0, 0.0});
+    line_set_parallel->PaintUniformColor({0.0, 0.0, 1.0});
 
 
     /* Set up open3d visualization */
@@ -124,7 +124,7 @@ int main(int argc, char *argv[]) {
 
         // we are only applying a uniform rotation to all meshes for demonstration purpose
         for (size_t i = 0; i < meshes.size(); i++) {
-            meshes[i]->Rotate(R, Eigen::Vector3d(0, 0, 0));
+            meshes[i]->Rotate(R, meshes[i]->GetCenter());
         }
 
         Timer timer_sequential;
