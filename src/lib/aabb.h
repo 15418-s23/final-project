@@ -130,15 +130,6 @@ private:
                 return;
             }
 
-            // for (auto v : node->vertices) {
-            //     std::cout << v.transpose() << std::endl;
-            // }
-            // std::cout << std::endl;
-            // for (auto v : vertices) {
-            //     std::cout << v.transpose() << std::endl;
-            // }
-            // std::cout << "end" << std::endl;
-
             // otherwise, we need to create children nodes
             node->left = std::make_unique<AABBTreeNode>(node->vertices);
             node->right = std::make_unique<AABBTreeNode>(vertices);
@@ -167,6 +158,9 @@ private:
                     insert_and_merge_recursive(node->right.get(), vertices);
                 }
 
+                // and extend the current node's box to contain the new box
+                node->box = node->box.merge(new_box);
+                node->vertices.insert(node->vertices.end(), vertices.begin(), vertices.end());
                 return;
             }
 
