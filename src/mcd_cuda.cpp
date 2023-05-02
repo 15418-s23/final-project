@@ -6,7 +6,7 @@
 #include "open3d/Open3D.h"
 #include "mcd.cuh"
 #include <Eigen/Core>
-#include "aabb.h"
+#include "lib/aabb.h"
 
 
 int main() {
@@ -66,8 +66,8 @@ int main() {
     for (int i = 0; i < aabbs.size(); ++i) {
         tree.insert(aabbs[i]);
     }
+
     std::vector<AABB> foundaabbs;
-    tree.collect_collision(aabbs[0], foundaabbs);
 
     // print number of vertices
     std::cout << "Number of vertices mesh_1: " << mesh_1->vertices_.size() << std::endl;

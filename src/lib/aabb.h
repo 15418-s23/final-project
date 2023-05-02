@@ -133,28 +133,28 @@ public:
     void collect_collision(AABB &box, std::vector<AABB> &boxes) {
         if (!root) {
             return;
-        }
-        else {
-            collect_collision_recursive(root.get(), boxes);
+        } else {
+            collect_collision_recursive(root.get(), box, boxes);
         }
     }
 
 private:
-    void collect_collision_recursive(AABBTreeNode* node, std::vector<AABB> &boxes) {
+    void collect_collision_recursive(AABBTreeNode *node, const AABB& box, std::vector<AABB> &boxes) {
         if (!node->left && !node->right) {
-            boxes.push_back(node->box);
+            if (node->box.intersects(box) && node->box.id > box.id)
+                boxes.push_back(node->box);
             return;
-        }
-        else {
-            if (node->left && node->left->box.intersects(node->right->box)) {
-                collect_collision_recursive(node->left.get(), boxes);
+        } else {
+            if (node->left && node->left->box.intersects(box)) {
+                collect_collision_recursive(node->left.get(), box, boxes);
             }
-            if (node->right && node->left->box.intersects(node->right->box)) {
-                collect_collision_recursive(node->right.get(), boxes);
+            if (node->right && node->right->box.intersects(box)) {
+                collect_collision_recursive(node->right.get(), box, boxes);
             }
         }
     }
-    void insert_and_merge_recursive(AABBTreeNode* node, const AABB& new_box) {
+
+    void insert_and_merge_recursive(AABBTreeNode *node, const AABB &new_box) {
 
         // if the current node has no children
         if (!node->left && !node->right) {
@@ -167,7 +167,7 @@ private:
             return;
         }
 
-        // if the current node has both children (i.e. it is not a leaf node)
+            // if the current node has both children (i.e. it is not a leaf node)
         else {
             bool intersects_left = node->left && node->left->box.intersects(new_box);
             bool intersects_right = node->right && node->right->box.intersects(new_box);
@@ -213,10 +213,10 @@ private:
 std::vector<AABB> extract_AABB(std::vector<std::vector<Eigen::Vector3d>> &meshes) {
     std::vector<AABB> aabbs;
     // parallelize with omp
-//#pragma omp parallel for default(none) shared(meshes, aabbs)
+#pragma omp parallel for default(none) shared(meshes, aabbs)
     for (int i = 0; i < meshes.size(); i++) {
-        Eigen::Vector3d minimum = meshes[0][0];
-        Eigen::Vector3d maximum = meshes[0][0];
+        Eigen::Vector3d minimum = meshes[i][0];
+        Eigen::Vector3d maximum = meshes[i][0];
         for (auto &j: meshes[i]) {
             for (int k = 0; k < 3; k++) {
                 if (j[k] < minimum[k]) {
@@ -227,7 +227,7 @@ std::vector<AABB> extract_AABB(std::vector<std::vector<Eigen::Vector3d>> &meshes
                 }
             }
         }
-        aabbs.push_back(AABB(Eigen::Vector3d(0, 0, 0), Eigen::Vector3d(0, 0, 0), i));
+        aabbs.emplace_back(minimum, maximum, i);
     }
     return aabbs;
 }

@@ -10,7 +10,7 @@
 #include <open3d/Open3D.h>
 
 #include "lib/timing.h"
-#include "mcd-sequential.h"
+#include "mcd.cuh"
 #include "open3d/visualization/visualizer/Visualizer.h"
 
 
@@ -75,6 +75,10 @@ int main(int argc, char *argv[]) {
         // apply translation based on base coordinates
         mesh.Translate(base_coordinates[i]);
 
+        // compute adjacency list
+        mesh.ComputeVertexNormals();
+        mesh.ComputeAdjacencyList();
+
         // extract the adjacency list
         std::vector< std::vector<int> > adj(mesh.adjacency_list_.size());
         for (const auto& unordered_set : mesh.adjacency_list_) {
@@ -112,9 +116,11 @@ int main(int argc, char *argv[]) {
 
 
     /* Run the MCD algorithm and apply rotation */
-    Eigen::Matrix3d R(0.9975021, -0.0705929, 0.0024979,
-                      0.0705929, 0.9950042, -0.0705929,
-                      0.0024979, 0.0705929, 0.9975021);
+    Eigen::Matrix3d R;
+    R << 0.9975021, -0.0705929, 0.0024979,
+            0.0705929, 0.9950042, -0.0705929,
+            0.0024979, 0.0705929, 0.9975021;
+
     while (true) {
         bool collide_sequential, collide_parallel;
         double distance_sequential = std::numeric_limits<double>::max();
@@ -127,13 +133,15 @@ int main(int argc, char *argv[]) {
             meshes[i]->Rotate(R, meshes[i]->GetCenter());
         }
 
+
+
         Timer timer_sequential;
         for (size_t i = 0; i < meshes.size(); i++) {
             for (size_t j = i + 1; j < meshes.size(); j++) {
                 // run the mcd algorithm
                 Eigen::Vector3d p1, p2;
                 bool collide;
-                mcd_sequential(meshes[i]->vertices_, adjs[i], meshes[j]->vertices_, adjs[j], p1, p2, collide, 1e-3);
+                mcd_cpu(meshes[i]->vertices_, adjs[i], meshes[j]->vertices_, adjs[j], p1, p2, collide, 1e-3);
 
                 // update results
                 collide_sequential = collide_sequential || collide;
@@ -154,7 +162,7 @@ int main(int argc, char *argv[]) {
                 // run the mcd algorithm
                 Eigen::Vector3d p1, p2;
                 bool collide;
-                mcd_parallel(meshes[i]->vertices_, adjs[i], meshes[j]->vertices_, adjs[j], p1, p2, collide, 1e-3);
+                mcd_cuda(meshes[i]->vertices_, adjs[i], meshes[j]->vertices_, adjs[j], p1, p2, collide, 1e-3);
 
                 // update results
                 collide_parallel = collide_parallel || collide;
@@ -170,6 +178,7 @@ int main(int argc, char *argv[]) {
         double elapsed_parallel = timer_parallel.elapsed();
 
         // report runtime for both sequential and parallel
+        std::cout << "----------------------------------------" << std::endl;
         std::cout << "sequential: " << elapsed_sequential << " ms" << std::endl;
         std::cout << "    collide: " << collide_sequential << ", minimum distance: " << (point1_sequential - point2_sequential).norm() << std::endl;
         std::cout << "parallel: " << elapsed_parallel << " ms" << std::endl;

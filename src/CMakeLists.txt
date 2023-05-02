@@ -33,7 +33,7 @@ target_link_libraries(libmcd
 
 # mcd cpu executable
 add_executable(mcd_cpu
-        mcd_cpu.cpp aabb.h)
+        mcd_cpu.cpp lib/aabb.h)
 target_link_libraries(mcd_cpu
         Open3D::Open3D
         )
@@ -41,8 +41,17 @@ target_link_libraries(mcd_cpu
 # mcd cuda executable
 add_compile_options(-Wall)
 add_executable(mcd_cuda
-        mcd_cuda.cpp aabb.h)
+        mcd_cuda.cpp lib/aabb.h)
 target_link_libraries(mcd_cuda
+        libmcd
+        Open3D::Open3D
+        )
+
+# mcd main executable
+add_compile_options(-Wall)
+add_executable(main
+        main.cpp)
+target_link_libraries(main
         libmcd
         Open3D::Open3D
         )
