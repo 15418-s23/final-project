@@ -17,7 +17,6 @@ endif()
 
 # Find CUDA
 find_package(CUDA REQUIRED)
-
 find_package(Open3D HINTS ${CMAKE_INSTALL_PREFIX}/lib/cmake)
 
 # mcd cuda library
@@ -34,7 +33,7 @@ target_link_libraries(libmcd
 
 # mcd cpu executable
 add_executable(mcd_cpu
-        mcd_cpu.cpp)
+        mcd_cpu.cpp aabb.h)
 target_link_libraries(mcd_cpu
         Open3D::Open3D
         )
@@ -42,7 +41,7 @@ target_link_libraries(mcd_cpu
 # mcd cuda executable
 add_compile_options(-Wall)
 add_executable(mcd_cuda
-        mcd_cuda.cpp)
+        mcd_cuda.cpp aabb.h)
 target_link_libraries(mcd_cuda
         libmcd
         Open3D::Open3D

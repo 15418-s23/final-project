@@ -1,12 +1,16 @@
 #include <iostream>
 #include <memory>
 #include <thread>
+#include <unistd.h>
+
 #include "open3d/Open3D.h"
 #include "mcd.cuh"
-#include <unistd.h>
+#include <Eigen/Core>
+#include "aabb.h"
 
 
 int main() {
+    AABBTree tree;
 
 //    auto mesh_1 = open3d::geometry::TriangleMesh::CreateCylinder(0.3, 4.0, 500);
     auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(1.0, 500);
@@ -20,7 +24,13 @@ int main() {
         adj1.emplace_back(unordered_set.begin(), unordered_set.end());
     }
 
-    auto mesh_2 = open3d::geometry::TriangleMesh::CreateSphere(1.0, 500);
+
+    open3d::geometry::TriangleMesh mesh_2_;
+    open3d::io::ReadTriangleMeshOptions options;
+    options.enable_post_processing = false;
+    options.print_progress = false;
+    open3d::io::ReadTriangleMeshFromOBJ("/mnt/storage/final-project/models/link_4.obj", mesh_2_, options);
+    auto mesh_2 = std::make_shared<open3d::geometry::TriangleMesh>(mesh_2_);
 //    auto mesh_2 = open3d::geometry::TriangleMesh::CreateCone(1.0, 1.0, 500);
 //    auto mesh_2 = open3d::geometry::TriangleMesh::CreateBox(1.0, 1.0, 1.0);
     mesh_2->ComputeVertexNormals();
@@ -47,6 +57,17 @@ int main() {
     vis.AddGeometry(mesh_2);
     vis.AddGeometry(mesh_3);
     vis.AddGeometry(lineset_1);
+
+
+    std::vector<std::vector<Eigen::Vector3d>> meshes;
+    meshes.emplace_back(mesh_1->vertices_.begin(), mesh_1->vertices_.end());
+    meshes.emplace_back(mesh_2->vertices_.begin(), mesh_2->vertices_.end());
+    std::vector<AABB> aabbs = extract_AABB(meshes);
+    for (int i = 0; i < aabbs.size(); ++i) {
+        tree.insert(aabbs[i]);
+    }
+    std::vector<AABB> foundaabbs;
+    tree.collect_collision(aabbs[0], foundaabbs);
 
     // print number of vertices
     std::cout << "Number of vertices mesh_1: " << mesh_1->vertices_.size() << std::endl;
