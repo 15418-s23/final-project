@@ -1,14 +1,17 @@
 
 #include <cmath>
+#include <Eigen/Core>
+#include <unordered_set>
 
 #include "lib/vec3.h"
 #include "lib/obj.h"
-#include "helpers.h"
+#include "lib/geometry_helpers.h"
+#include "open3d/3rdparty/Eigen/src/Core/Matrix.h"
 
 
 // /**
 //  * face_to_face_distance - Compute the minimum distance between two faces
-//  * 
+//  *
 //  * @param v1 - the first vertex of the first face
 //  * @param v2 - the second vertex of the first face
 //  * @param v3 - the third vertex of the first face
@@ -19,7 +22,7 @@
 //  */
 // static inline double face_to_face_distance(const Vec3& v1, const Vec3& v2, const Vec3& v3,
 //                                            const Vec3& u1, const Vec3& u2, const Vec3& u3) {
-    
+
 // #ifdef DEBUG
 //     std::cout << "---------- face_to_face_distance ----------" << std::endl;
 //     std::cout << "v1: " << v1 << std::endl;
@@ -54,7 +57,7 @@
 //         return std::abs(dot(v1 - u1, normal_v));
 //     }
 
-//     // if not, find the minimum distance 
+//     // if not, find the minimum distance
 //     double min_distance = std::numeric_limits<double>::max();
 
 //     // find the minimum distance between face u and the vertices of face v
@@ -81,19 +84,19 @@
 
 
 /**
- * mcd - Mesh Collision Detection
- * 
+ * mcd - Mesh Collision Detection, a naive implementation
+ *
  * @param model_vertices - a vector of vectors of vertices, where each vector of
  *                         corresponds to a model
  * @param model_faces - a vector of vectors of faces, where each vector of faces
  *                      corresponds to a model
  * @return the minimum distance between any two faces in the models
 */
-double mcd(std::vector< std::vector<Vec3> > model_vertices,
-           std::vector< std::vector<Face> > model_faces) {
+double mcd_naive(std::vector< std::vector<Eigen::Vector3d> > model_vertices,
+                 std::vector< std::vector<Eigen::Vector3i> > model_faces) {
 
     double minimum_distance = std::numeric_limits<double>::max();
-    
+
     // for each model[i] (defined by a vector of vertices and a vector of faces)...
     for (size_t i = 0; i < model_faces.size(); i++) {
         // loop through all other models in the scene...
@@ -107,14 +110,38 @@ double mcd(std::vector< std::vector<Vec3> > model_vertices,
                 for (size_t l = 0; l < model_faces[j].size(); l++) {
                     // find the minimum distance between the two faces
                     Vec3 V[3] = {
-                        model_vertices[i][model_faces[i][k].v1],
-                        model_vertices[i][model_faces[i][k].v2],
-                        model_vertices[i][model_faces[i][k].v3]
+                        Vec3(
+                            (float)model_vertices[i][model_faces[i][k].x()].x(),
+                            (float)model_vertices[i][model_faces[i][k].x()].y(),
+                            (float)model_vertices[i][model_faces[i][k].x()].z()
+                        ),
+                        Vec3(
+                            (float)model_vertices[i][model_faces[i][k].y()].x(),
+                            (float)model_vertices[i][model_faces[i][k].y()].y(),
+                            (float)model_vertices[i][model_faces[i][k].y()].z()
+                        ),
+                        Vec3(
+                            (float)model_vertices[i][model_faces[i][k].z()].x(),
+                            (float)model_vertices[i][model_faces[i][k].z()].y(),
+                            (float)model_vertices[i][model_faces[i][k].z()].z()
+                        )
                     };
                     Vec3 U[3] = {
-                        model_vertices[j][model_faces[j][l].v1],
-                        model_vertices[j][model_faces[j][l].v2],
-                        model_vertices[j][model_faces[j][l].v3]
+                        Vec3(
+                            (float)model_vertices[j][model_faces[j][l].x()].x(),
+                            (float)model_vertices[j][model_faces[j][l].x()].y(),
+                            (float)model_vertices[j][model_faces[j][l].x()].z()
+                        ),
+                        Vec3(
+                            (float)model_vertices[j][model_faces[j][l].y()].x(),
+                            (float)model_vertices[j][model_faces[j][l].y()].y(),
+                            (float)model_vertices[j][model_faces[j][l].y()].z()
+                        ),
+                        Vec3(
+                            (float)model_vertices[j][model_faces[j][l].z()].x(),
+                            (float)model_vertices[j][model_faces[j][l].z()].y(),
+                            (float)model_vertices[j][model_faces[j][l].z()].z()
+                        )
                     };
                     auto [P, Q, distance] = TriDist(V, U);
                     if (distance < minimum_distance) {
