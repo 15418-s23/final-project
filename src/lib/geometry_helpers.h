@@ -3,7 +3,7 @@
 
 #include <cmath>
 
-#include "lib/vec3.h"
+#include "vec3.h"
 
 
 // static inline Vec3 closest_point_on_line_segment(const Vec3& point, const Vec3& line_start, const Vec3& line_end) {
@@ -186,14 +186,14 @@ static inline double point_to_line_distance(const Vec3& v, const Vec3& u1, const
 
 /**
  * SegPoints - Returns closest points and the distance between an segment pair.
- * 
+ *
  * Implemented from an algorithm described in
  * Vladimir J. Lumelsky,
  * On fast computation of distance between line segments.
  * In Information Processing Letters, no. 21, pages 55-61, 1985.
- * 
+ *
  * Adopted from https://github.com/MeshInspector/MeshLib/blob/master/source/MRMesh/MRTriDist.cpp
- * 
+ *
  * @param P - origin of segment 1
  * @param A - direction and length of segment 1
  * @param Q - origin of segment 2
@@ -214,8 +214,8 @@ static inline std::tuple<Vec3, Vec3, Vec3> SegPoints(const Vec3 & P, const Vec3 
     A_dot_T = dot(A, T);
     B_dot_T = dot(B, T);
 
-    // t parameterizes ray P-A 
-    // u parameterizes ray Q-B 
+    // t parameterizes ray P-A
+    // u parameterizes ray Q-B
 
     float t, u;
 
@@ -236,8 +236,8 @@ static inline std::tuple<Vec3, Vec3, Vec3> SegPoints(const Vec3 & P, const Vec3 
 
     u = (t*A_dot_B - B_dot_T) / B_dot_B;
 
-    // if u is on segment Q-B, t and u correspond to 
-    // closest points, otherwise, clamp u, recompute and clamp t 
+    // if u is on segment Q-B, t and u correspond to
+    // closest points, otherwise, clamp u, recompute and clamp t
 
     Vec3 X, Y, VEC;
 
@@ -308,34 +308,34 @@ static inline std::tuple<Vec3, Vec3, Vec3> SegPoints(const Vec3 & P, const Vec3 
 
 
 //--------------------------------------------------------------------------
-// TriDist() 
+// TriDist()
 //
-// Computes the closest points on two triangles, and returns the 
+// Computes the closest points on two triangles, and returns the
 // squared distance between them.
-// 
+//
 // S and T are the triangles, stored tri[point][dimension].
 //
-// If the triangles are disjoint, P and Q give the closest points of 
-// S and T respectively. However, if the triangles overlap, P and Q 
-// are basically a random pair of points from the triangles, not 
-// coincident points on the intersection of the triangles, as might 
+// If the triangles are disjoint, P and Q give the closest points of
+// S and T respectively. However, if the triangles overlap, P and Q
+// are basically a random pair of points from the triangles, not
+// coincident points on the intersection of the triangles, as might
 // be expected.
 //--------------------------------------------------------------------------
 
 /**
  * TriDist - Returns closest points and the distance between an triangle pair.
- * 
- * Computes the closest points on two triangles, and returns the 
+ *
+ * Computes the closest points on two triangles, and returns the
  * squared distance between them.
- * 
- * If the triangles are disjoint, P and Q give the closest points of 
- * S and T respectively. However, if the triangles overlap, P and Q 
- * are basically a random pair of points from the triangles, not 
- * coincident points on the intersection of the triangles, as might 
+ *
+ * If the triangles are disjoint, P and Q give the closest points of
+ * S and T respectively. However, if the triangles overlap, P and Q
+ * are basically a random pair of points from the triangles, not
+ * coincident points on the intersection of the triangles, as might
  * be expected.
- * 
+ *
  * Adopted from https://github.com/MeshInspector/MeshLib/blob/master/source/MRMesh/MRTriDist.cpp
- * 
+ *
  * @param S - triangle 1
  * @param T - triangle 2
  * @return <P, Q, distance> where P and Q are the closest points on the triangles
@@ -353,9 +353,9 @@ static inline std::tuple<Vec3, Vec3, float> TriDist(const Vec3 S[3], const Vec3 
     Tv[1] = T[2] - T[1];
     Tv[2] = T[0] - T[2];
 
-    // For each edge pair, the vector connecting the closest points 
+    // For each edge pair, the vector connecting the closest points
     // of the edges defines a slab (parallel planes at head and tail
-    // enclose the slab). If we can show that the off-edge vertex of 
+    // enclose the slab). If we can show that the off-edge vertex of
     // each triangle is outside of the slab, then the closest points
     // of the edges are the closest points for the triangles.
     // Even if these tests fail, it may be helpful to know the closest
@@ -369,7 +369,7 @@ static inline std::tuple<Vec3, Vec3, float> TriDist(const Vec3 S[3], const Vec3 
 
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
-            // Find closest points on edges i & j, plus the 
+            // Find closest points on edges i & j, plus the
             // vector (and distance squared) between these points
 
             auto [P, Q, VEC] = SegPoints(S[i], Sv[i], T[j], Tv[j]);
@@ -377,7 +377,7 @@ static inline std::tuple<Vec3, Vec3, float> TriDist(const Vec3 S[3], const Vec3 
             V = Q - P;
             float dd = V.norm();
 
-            // Verify this closest point pair only if the distance 
+            // Verify this closest point pair only if the distance
             // squared is less than the minimum found thus far.
 
             if (dd <= mindd) {
@@ -390,19 +390,19 @@ static inline std::tuple<Vec3, Vec3, float> TriDist(const Vec3 S[3], const Vec3 
                 Z = T[(j+2) % 3] - Q;
                 float b = dot(Z, VEC);
 
-                if ((a <= 0) && (b >= 0)) 
+                if ((a <= 0) && (b >= 0))
                     return std::tuple<Vec3, Vec3, float>(P, Q, dd);
 
                 float p = dot(V, VEC);
 
                 if (a < 0) a = 0;
                 if (b > 0) b = 0;
-                if ((p - a + b) > 0) shown_disjoint = 1;	
+                if ((p - a + b) > 0) shown_disjoint = 1;
             }
         }
     }
 
-    // No edge pairs contained the closest points.  
+    // No edge pairs contained the closest points.
     // either:
     // 1. one of the closest points is a vertex, and the
     //    other point is interior to a face.
@@ -411,8 +411,8 @@ static inline std::tuple<Vec3, Vec3, float> TriDist(const Vec3 S[3], const Vec3 
     //    cases 1 and 2 are not true, then the closest points from the 9
     //    edge pairs checks above can be taken as closest points for the
     //    triangles.
-    // 4. possibly, the triangles were degenerate.  When the 
-    //    triangle points are nearly colinear or coincident, one 
+    // 4. possibly, the triangles were degenerate.  When the
+    //    triangle points are nearly colinear or coincident, one
     //    of above tests might fail even though the edges tested
     //    contain the closest points.
 
@@ -420,16 +420,16 @@ static inline std::tuple<Vec3, Vec3, float> TriDist(const Vec3 S[3], const Vec3 
 
     Vec3 Sn = cross(Sv[0], Sv[1]); // Compute normal to S triangle
     float Snl = dot(Sn, Sn);      // Compute square of length of normal
-    
+
     // If cross product is long enough,
 
     Vec3 P, Q;
 
-    if (Snl > 1e-15)  
+    if (Snl > 1e-15)
     {
         // Get projection lengths of T points
 
-        float Tp[3]; 
+        float Tp[3];
 
         V = S[0] - T[0];
         Tp[0] = dot(V,Sn);
@@ -461,14 +461,14 @@ static inline std::tuple<Vec3, Vec3, float> TriDist(const Vec3 S[3], const Vec3 
                 point = 2;
         }
 
-        // If Sn is a separating direction, 
+        // If Sn is a separating direction,
 
         if (point >= 0)  {
             shown_disjoint = 1;
 
-            // Test whether the point found, when projected onto the 
+            // Test whether the point found, when projected onto the
             // other triangle, lies within the face.
-            
+
             V = T[point] - S[0];
             Z = cross(Sn, Sv[0]);
             if (dot(V,Z) > 0) {
@@ -478,7 +478,7 @@ static inline std::tuple<Vec3, Vec3, float> TriDist(const Vec3 S[3], const Vec3 
                     V = T[point] - S[2];
                     Z = cross(Sn, Sv[2]);
                     if (dot(V,Z) > 0) {
-                        // T[point] passed the test - it's a closest point for 
+                        // T[point] passed the test - it's a closest point for
                         // the T triangle; the other point is on the face of S
 
                         P = T[point] + Sn * Tp[point]/Snl;
@@ -490,12 +490,12 @@ static inline std::tuple<Vec3, Vec3, float> TriDist(const Vec3 S[3], const Vec3 
         }
     }
 
-    Vec3 Tn = cross(Tv[0], Tv[1]); 
-    float Tnl = dot(Tn,Tn);      
-    
-    if (Tnl > std::numeric_limits<float>::epsilon())  
+    Vec3 Tn = cross(Tv[0], Tv[1]);
+    float Tnl = dot(Tn,Tn);
+
+    if (Tnl > std::numeric_limits<float>::epsilon())
     {
-        float Sp[3]; 
+        float Sp[3];
 
         V = T[0] - S[0];
         Sp[0] = dot(V,Tn);
@@ -524,7 +524,7 @@ static inline std::tuple<Vec3, Vec3, float> TriDist(const Vec3 S[3], const Vec3 
                 point = 2;
         }
 
-        if (point >= 0)  { 
+        if (point >= 0)  {
             shown_disjoint = 1;
 
             V = S[point] - T[0];
@@ -547,9 +547,9 @@ static inline std::tuple<Vec3, Vec3, float> TriDist(const Vec3 S[3], const Vec3 
 
     // Case 1 can't be shown.
     // If one of these tests showed the triangles disjoint,
-    // we assume case 3 or 4, otherwise we conclude case 2, 
+    // we assume case 3 or 4, otherwise we conclude case 2,
     // that the triangles overlap.
-    
+
     if (shown_disjoint)
     {
         P = minP;
