@@ -572,6 +572,7 @@ int support_function(std::vector<Eigen::Vector3d> &vertices,
                      const Eigen::Vector3d &direction,
                      int start_vertex) {
     int support_index;
+    start_vertex = -1;
     if (start_vertex >= 0) {
         // Perform hill climbing
         support_index = start_vertex;

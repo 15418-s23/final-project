@@ -31,9 +31,9 @@ int main() {
     options.print_progress = false;
 //    open3d::io::ReadTriangleMeshFromOBJ("/mnt/storage/final-project/models/link_4.obj", mesh_2_, options);
 //    auto mesh_2 = std::make_shared<open3d::geometry::TriangleMesh>(mesh_2_);
-    auto mesh_2 = open3d::geometry::TriangleMesh::CreateSphere(1.0, 500);
+//    auto mesh_2 = open3d::geometry::TriangleMesh::CreateSphere(1.0, 500);
 //    auto mesh_2 = open3d::geometry::TriangleMesh::CreateCone(1.0, 1.0, 500);
-//    auto mesh_2 = open3d::geometry::TriangleMesh::CreateBox(1.0, 1.0, 1.0);
+    auto mesh_2 = open3d::geometry::TriangleMesh::CreateBox(1.0, 1.0, 1.0);
     mesh_2->ComputeVertexNormals();
     mesh_2->ComputeAdjacencyList();
     mesh_2->PaintUniformColor({0.1, 0.1, 0.7});
@@ -59,24 +59,6 @@ int main() {
     vis.AddGeometry(mesh_3);
     vis.AddGeometry(lineset_1);
 
-//
-//    std::vector<std::vector<Eigen::Vector3d>> meshes;
-//    meshes.emplace_back(mesh_1->vertices_.begin(), mesh_1->vertices_.end());
-//    meshes.emplace_back(mesh_2->vertices_.begin(), mesh_2->vertices_.end());
-//    std::vector<AABB> aabbs = extract_AABB(meshes);
-//    for (int i = 0; i < aabbs.size(); ++i) {
-//        tree.insert(aabbs[i]);
-//    }
-
-    std::vector<AABB> foundaabbs;
-
-    // tmpvar
-    std::vector<std::vector<Eigen::Vector3d>> vertices;
-    std::vector<int> mesh1 = {0};
-    std::vector<int> mesh2 = {1};
-    std::vector<Eigen::Vector3d> cuda_point1(1);
-    std::vector<Eigen::Vector3d> cuda_point2(1);
-    std::vector<char> cudacollide(1);
     // print number of vertices
     std::cout << "Number of vertices mesh_1: " << mesh_1->vertices_.size() << std::endl;
     std::cout << "Number of vertices mesh_2: " << mesh_2->vertices_.size() << std::endl;
@@ -93,46 +75,32 @@ int main() {
 
         auto begin = std::chrono::high_resolution_clock::now();
 
-        bool cpucollide;
-        Eigen::Vector3d cpu_point1, cpu_point2;
+        bool cpucollide, cudacollide;
+        Eigen::Vector3d cpu_point1, cpu_point2, cuda_point1, cuda_point2;
 
         auto cpustart = std::chrono::high_resolution_clock::now();
         mcd_cpu(mesh_1->vertices_, adj1, mesh_2->vertices_, adj2, cpu_point1, cpu_point2, cpucollide, 1e-3);
         auto cpuend = std::chrono::high_resolution_clock::now();
 
         double cpudist = (cpu_point2 - cpu_point1).norm();
-        vertices.clear();
-        vertices.emplace_back(mesh_1->vertices_);
-        vertices.emplace_back(mesh_2->vertices_);
-
-        std::vector<Eigen::Vector3d> vertices_;
-        std::vector<long> vertices_offset;
-        std::vector<long> vertices_size;
-        long offset = 0;
-        std::for_each(vertices.begin(), vertices.end(), [&](const std::vector<Eigen::Vector3d> &n) {
-            vertices_offset.push_back(offset);
-            offset += n.size();
-            vertices_size.push_back(n.size());
-            vertices_.insert(vertices_.end(), n.begin(), n.end());
-        });
 
         auto cudastart = std::chrono::high_resolution_clock::now();
-        mcd_cuda(vertices_, vertices_offset, vertices_size, mesh1, mesh2, cuda_point1, cuda_point2, cudacollide, 1e-5);
+        mcd_cuda(mesh_1->vertices_, adj1, mesh_2->vertices_, adj2, cuda_point1, cuda_point2, cudacollide, 1e-3);
         auto cudaend = std::chrono::high_resolution_clock::now();
-        double cudadist = (cuda_point2[0] - cuda_point1[0]).norm();
+        double cudadist = (cuda_point2 - cuda_point1).norm();
 
         std::cout << "---" << std::endl;
         std::cout << "CPU  distance: " << cpudist << " collide: " << cpucollide << " time: "
                   << std::chrono::duration_cast<std::chrono::milliseconds>(cpuend - cpustart).count() << " ms"
                   << std::endl;
-        std::cout << "CUDA distance: " << cudadist << " collide: " << (cudacollide[0] > 0 ? 1 : 0) << " time: "
+        std::cout << "CUDA distance: " << cudadist << " collide: " << cudacollide << " time: "
                   << std::chrono::duration_cast<std::chrono::milliseconds>(cudaend - cudastart).count() << " ms" << std::endl;
 
-//        lineset_1->points_[0] = cpu_point1;
-//        lineset_1->points_[1] = cpu_point2;
+        lineset_1->points_[0] = cpu_point1;
+        lineset_1->points_[1] = cpu_point2;
 
-        lineset_1->points_[0] = cuda_point1[0];
-        lineset_1->points_[1] = cuda_point2[0];
+//        lineset_1->points_[0] = cuda_point1[0];
+//        lineset_1->points_[1] = cuda_point2[0];
         vis.UpdateGeometry(mesh_1);
         vis.UpdateGeometry(mesh_2);
         vis.UpdateGeometry(lineset_1);

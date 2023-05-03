@@ -14,7 +14,7 @@
 #include "mcd.cuh"
 
 // #define USE_NAIVE
-// #define USE_AABB_TREE
+#define USE_AABB_TREE
 
 
 int main(int argc, char *argv[]) {
@@ -29,11 +29,11 @@ int main(int argc, char *argv[]) {
     /* Get the arguments */
     std::string input_file_path = argv[1];
     double collision_margin = (argc == 3) ? std::stod(argv[2]) : 0.0;
-
+    collision_margin = std::numeric_limits<double>::max();
 
     /* Load the inputs */
     std::vector<std::string> model_file_paths;
-    std::vector< Eigen::Vector3d > base_coordinates;
+    std::vector<Eigen::Vector3d> base_coordinates;
 
     std::ifstream input_file(input_file_path);
     if (!input_file) {
@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
 
 
     /* Initialize the line that marks the minimum distances */
-    std::vector< std::shared_ptr<open3d::geometry::LineSet> > line_sets_sequential(meshes.size());
+    std::vector<std::shared_ptr<open3d::geometry::LineSet> > line_sets_sequential(meshes.size());
     for (size_t i = 0; i < meshes.size(); i++) {
         line_sets_sequential[i] = std::make_shared<open3d::geometry::LineSet>();
         line_sets_sequential[i]->points_.emplace_back(0.0, 0.0, 0.0);
@@ -105,7 +105,7 @@ int main(int argc, char *argv[]) {
         line_sets_sequential[i]->lines_.emplace_back(0, 1);
         line_sets_sequential[i]->PaintUniformColor({1.0, 0.0, 0.0});
     }
-    std::vector< std::shared_ptr<open3d::geometry::LineSet> > line_sets_parallel(meshes.size());
+    std::vector<std::shared_ptr<open3d::geometry::LineSet> > line_sets_parallel(meshes.size());
     for (size_t i = 0; i < meshes.size(); i++) {
         line_sets_parallel[i] = std::make_shared<open3d::geometry::LineSet>();
         line_sets_parallel[i]->points_.emplace_back(0.0, 0.0, 0.0);
@@ -118,13 +118,13 @@ int main(int argc, char *argv[]) {
     /* Set up open3d visualization */
     open3d::visualization::Visualizer vis;
     vis.CreateVisualizerWindow("Mesh", 1600, 1200);
-    for (const auto& mesh : meshes) {
+    for (const auto &mesh: meshes) {
         vis.AddGeometry(mesh);
     }
-    for (const auto& line_set_sequential : line_sets_sequential) {
+    for (const auto &line_set_sequential: line_sets_sequential) {
         vis.AddGeometry(line_set_sequential);
     }
-    for (const auto& line_set_parallel : line_sets_parallel) {
+    for (const auto &line_set_parallel: line_sets_parallel) {
         vis.AddGeometry(line_set_parallel);
     }
 
@@ -132,19 +132,64 @@ int main(int argc, char *argv[]) {
     /* Run the MCD algorithm and apply rotation */
     Eigen::Matrix3d R;
     R << 0.9975021, -0.0705929, 0.0024979,
-         0.0705929, 0.9950042, -0.0705929,
-         0.0024979, 0.0705929, 0.9975021;
+            0.0705929, 0.9950042, -0.0705929,
+            0.0024979, 0.0705929, 0.9975021;
 
     while (true) {
-        bool collide_sequential, collide_parallel;
-        double minimum_distance_sequential = std::numeric_limits<double>::max();
-        double minimum_distance_parallel = std::numeric_limits<double>::max();
+        bool collide_sequential = false, collide_parallel = false;
+        std::unordered_map<int, double> distance_sequential, distance_parallel;
 
         // we are only applying a uniform rotation to all meshes for demonstration purpose
         for (size_t i = 0; i < meshes.size(); i++) {
             meshes[i]->Rotate(R, meshes[i]->GetCenter());
         }
 
+        // clear old lines
+        for (const auto &line_set_sequential: line_sets_sequential) {
+            line_set_sequential->points_[0] = {0.0, 0.0, 0.0};
+            line_set_sequential->points_[1] = {0.0, 0.0, 0.0};
+        }
+        for (const auto &line_set_parallel: line_sets_parallel) {
+            line_set_parallel->points_[0] = {0.0, 0.0, 0.0};
+            line_set_parallel->points_[1] = {0.0, 0.0, 0.0};
+        }
+
+        // list the distance pairs
+        std::vector<std::pair<int, int> > pairs;
+#ifdef USE_AABB_TREE
+        AABBTree aabb_tree;
+        std::vector< std::vector<Eigen::Vector3d> > meshes_vertices;
+        for (const auto& mesh : meshes) {
+            meshes_vertices.push_back(mesh->vertices_);
+        }
+        std::vector<AABB> aabbs = extract_AABB(meshes_vertices);
+        for (const auto& aabb : aabbs) {
+            aabb_tree.insert(aabb);
+        }
+#pragma omp parallel for default(none) shared(meshes, aabbs)
+        for (size_t j = 0; j < meshes.size(); j++) {
+            AABB this_box = aabbs[j];
+            this_box.minimum -= Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
+            this_box.maximum += Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
+            std::vector<AABB> candidates;
+            aabb_tree.collect_collision(this_box, candidates);
+#pragma omp critical (pairs)
+            for (const auto &candidate: candidates) {
+                pairs.emplace_back(j, candidate.id);
+            }
+        }
+#else
+        for (size_t i = 0; i < meshes.size(); i++) {
+            for (size_t j = i + 1; j < meshes.size(); j++) {
+                pairs.emplace_back(i, j);
+            }
+        }
+#endif
+
+        for(const auto &pair: pairs) {
+            distance_sequential[pair.first] = std::numeric_limits<double>::max();
+            distance_parallel[pair.first] = std::numeric_limits<double>::max();
+        }
 
 #ifdef USE_NAIVE
         // use the naive algorithm to find the closest bounding points
@@ -164,125 +209,57 @@ int main(int argc, char *argv[]) {
         double elapsed_naive = std::chrono::duration_cast<std::chrono::milliseconds>(end_naive - start_naive).count();
 #endif
 
-
-#ifdef USE_AABB_TREE
-        // build an AABB tree for meshes
-        AABBTree aabb_tree;
-        std::vector< std::vector<Eigen::Vector3d> > meshes_vertices;
-        for (const auto& mesh : meshes) {
-            meshes_vertices.push_back(mesh->vertices_);
-        }
-        std::vector<AABB> aabbs = extract_AABB(meshes_vertices);
-        for (const auto& aabb : aabbs) {
-            aabb_tree.insert(aabb);
-        }
-#endif
-
-
         auto start_sequential = std::chrono::high_resolution_clock::now();
-        for (size_t i = 0; i < meshes.size(); i++) {
-            double distance_sequential = std::numeric_limits<double>::max();
-            Eigen::Vector3d point1_sequential, point2_sequential;
-#ifdef USE_AABB_TREE
-            // use the AABB tree to find the closest bounding box
-            AABB this_box;
-            this_box.minimum -= Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
-            this_box.maximum += Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
-            std::vector<AABB> candidates;
-            aabb_tree.collect_collision(this_box, candidates);
-            for (const auto& candidate : candidates) {
-                // run the mcd algorithm
-                Eigen::Vector3d p1, p2;
-                bool collide;
-                mcd_cpu(meshes[i]->vertices_, adjs[i], meshes[candidate.id]->vertices_, adjs[candidate.id], p1, p2, collide, 1e-3);
-
-                // update results
-                collide_sequential = collide_sequential || collide;
-                double distance = (p1 - p2).norm();
-                minimum_distance_sequential = std::min(minimum_distance_sequential, distance);
-                if (distance < distance_sequential) {
-                    distance_sequential = distance;
-                    point1_sequential = p1;
-                    point2_sequential = p2;
-                }
+        for(const auto &pair: pairs) {
+            // run the mcd algorithm
+            Eigen::Vector3d p1, p2;
+            bool collide;
+            mcd_cpu(meshes[pair.first]->vertices_, adjs[pair.first], meshes[pair.second]->vertices_, adjs[pair.second], p1, p2,
+                    collide, 1e-3);
+            // update results
+            collide_sequential = collide_sequential || collide;
+            double distance = (p1 - p2).norm();
+            double old_distance = distance_sequential[pair.first];
+            if (distance < old_distance) {
+                distance_sequential[pair.first] = distance;
+                line_sets_sequential[pair.first]->points_[0] = p1;
+                line_sets_sequential[pair.first]->points_[1] = p2;
             }
-#else
-            for (size_t j = i + 1; j < meshes.size(); j++) {
-                // run the mcd algorithm
-                Eigen::Vector3d p1, p2;
-                bool collide;
-                mcd_cpu(meshes[i]->vertices_, adjs[i], meshes[j]->vertices_, adjs[j], p1, p2, collide, 1e-3);
-
-                // update results
-                collide_sequential = collide_sequential || collide;
-                double distance = (p1 - p2).norm();
-                minimum_distance_sequential = std::min(minimum_distance_sequential, distance);
-                if (distance < distance_sequential) {
-                    distance_sequential = distance;
-                    point1_sequential = p1;
-                    point2_sequential = p2;
-                }
-            }
-#endif
-            // update the line set
-            line_sets_sequential[i]->points_[0] = point1_sequential;
-            line_sets_sequential[i]->points_[1] = point2_sequential;
         }
         auto end_sequential = std::chrono::high_resolution_clock::now();
-        double elapsed_sequential = std::chrono::duration_cast<std::chrono::milliseconds>(end_sequential - start_sequential).count();
+        double elapsed_sequential = std::chrono::duration_cast<std::chrono::milliseconds>(
+                end_sequential - start_sequential).count();
 
 
         auto start_parallel = std::chrono::high_resolution_clock::now();
-        for (size_t i = 0; i < meshes.size(); i++) {
-            double distance_parallel = std::numeric_limits<double>::max();
-            Eigen::Vector3d point1_parallel, point2_parallel;
-#ifdef USE_AABB_TREE
-            // use the AABB tree to find the closest bounding box
-            AABB this_box;
-            this_box.minimum -= Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
-            this_box.maximum += Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
-            std::vector<AABB> candidates;
-            aabb_tree.collect_collision(this_box, candidates);
-            for (const auto& candidate : candidates) {
-                // run the mcd algorithm
-                Eigen::Vector3d p1, p2;
-                bool collide;
-                mcd_cuda(meshes[i]->vertices_, adjs[i], meshes[candidate.id]->vertices_, adjs[candidate.id], p1, p2, collide, 1e-3);
-
-                // update results
-                collide_parallel = collide_parallel || collide;
-                double distance = (p1 - p2).norm();
-                minimum_distance_parallel = std::min(minimum_distance_parallel, distance);
-                if (distance < distance_parallel) {
-                    distance_parallel = distance;
-                    point1_parallel = p1;
-                    point2_parallel = p2;
-                }
+        for(const auto &pair: pairs) {
+            // run the mcd algorithm
+            Eigen::Vector3d p1, p2;
+            bool collide;
+            mcd_cuda(meshes[pair.first]->vertices_, adjs[pair.first], meshes[pair.second]->vertices_, adjs[pair.second], p1, p2,
+                    collide, 1e-3);
+            // update results
+            collide_parallel = collide_parallel || collide;
+            double distance = (p1 - p2).norm();
+            double old_distance = distance_parallel[pair.first];
+            if (distance < old_distance) {
+                distance_parallel[pair.first] = distance;
+                line_sets_parallel[pair.first]->points_[0] = p1;
+                line_sets_parallel[pair.first]->points_[1] = p2;
             }
-#else
-            for (size_t j = i + 1; j < meshes.size(); j++) {
-                // run the mcd algorithm
-                Eigen::Vector3d p1, p2;
-                bool collide;
-                mcd_cuda(meshes[i]->vertices_, adjs[i], meshes[j]->vertices_, adjs[j], p1, p2, collide, 1e-3);
-
-                // update results
-                collide_parallel = collide_parallel || collide;
-                double distance = (p1 - p2).norm();
-                minimum_distance_parallel = std::min(minimum_distance_parallel, distance);
-                if (distance < distance_parallel) {
-                    distance_parallel = distance;
-                    point1_parallel = p1;
-                    point2_parallel = p2;
-                }
-            }
-#endif
-            // update the line set
-            line_sets_parallel[i]->points_[0] = point1_parallel;
-            line_sets_parallel[i]->points_[1] = point2_parallel;
         }
         auto end_parallel = std::chrono::high_resolution_clock::now();
-        double elapsed_parallel = std::chrono::duration_cast<std::chrono::milliseconds>(end_parallel - start_parallel).count();
+        double elapsed_parallel = std::chrono::duration_cast<std::chrono::milliseconds>(
+                end_parallel - start_parallel).count();
+
+
+        // stats
+        double minimum_distance_sequential = std::numeric_limits<double>::max();
+        double minimum_distance_parallel = std::numeric_limits<double>::max();
+        for (const auto &pair: pairs) {
+            minimum_distance_sequential = std::min(minimum_distance_sequential, distance_sequential[pair.first]);
+            minimum_distance_parallel = std::min(minimum_distance_parallel, distance_parallel[pair.first]);
+        }
 
         // report runtime for both sequential and parallel
         std::cout << "----------------------------------------" << std::endl;
@@ -291,13 +268,23 @@ int main(int argc, char *argv[]) {
         std::cout << "    collide: " << collide_naive << ", minimum distance: " << minimum_distance_naive << std::endl;
 #endif
         std::cout << "sequential : " << elapsed_sequential << " ms" << std::endl;
-        std::cout << "    collide: " << collide_sequential << ", minimum distance: " << minimum_distance_sequential << std::endl;
+        std::cout << "    collide: " << collide_sequential << ", minimum distance: " << minimum_distance_sequential
+                  << std::endl;
         std::cout << "parallel   : " << elapsed_parallel << " ms" << std::endl;
-        std::cout << "    collide: " << collide_parallel << ", minimum distance: " << minimum_distance_parallel << std::endl;
+        std::cout << "    collide: " << collide_parallel << ", minimum distance: " << minimum_distance_parallel
+                  << std::endl;
 
         // update meshes
-        for (const auto& mesh : meshes) {
+        for (const auto &mesh: meshes) {
             vis.UpdateGeometry(mesh);
+        }
+
+        // update lines
+        for (const auto &line_set: line_sets_sequential) {
+            vis.UpdateGeometry(line_set);
+        }
+        for (const auto &line_set: line_sets_parallel) {
+            vis.UpdateGeometry(line_set);
         }
 
         // update visualization
