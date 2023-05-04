@@ -141,7 +141,7 @@ public:
 private:
     void collect_collision_recursive(AABBTreeNode *node, const AABB& box, std::vector<AABB> &boxes) {
         if (!node->left && !node->right) {
-            if (node->box.intersects(box) && node->box.id > box.id)
+            if (node->box.intersects(box) && node->box.id != box.id)
                 boxes.push_back(node->box);
             return;
         } else {

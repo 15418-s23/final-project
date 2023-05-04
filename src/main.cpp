@@ -13,8 +13,9 @@
 #include "mcd_naive.h"
 #include "mcd.cuh"
 
-// #define USE_NAIVE
+//#define USE_NAIVE
 #define USE_AABB_TREE
+//#define PARALLEL_ONLY
 
 
 int main(int argc, char *argv[]) {
@@ -117,7 +118,7 @@ int main(int argc, char *argv[]) {
 
     /* Set up open3d visualization */
     open3d::visualization::Visualizer vis;
-    vis.CreateVisualizerWindow("Mesh", 1600, 1200);
+    vis.CreateVisualizerWindow("Mesh", 1920, 1080);
     for (const auto &mesh: meshes) {
         vis.AddGeometry(mesh);
     }
@@ -132,8 +133,9 @@ int main(int argc, char *argv[]) {
     /* Run the MCD algorithm and apply rotation */
     Eigen::Matrix3d R;
     R << 0.9975021, -0.0705929, 0.0024979,
-            0.0705929, 0.9950042, -0.0705929,
-            0.0024979, 0.0705929, 0.9975021;
+           0.0705929, 0.9950042, -0.0705929,
+          0.0024979, 0.0705929, 0.9975021;
+//    R = Eigen::Matrix3d::Identity();
 
     while (true) {
         bool collide_sequential = false, collide_parallel = false;
@@ -176,12 +178,16 @@ int main(int argc, char *argv[]) {
 #pragma omp critical (pairs)
             for (const auto &candidate: candidates) {
                 pairs.emplace_back(j, candidate.id);
+//                std::cout << "pair: " << j << " " << candidate.id << std::endl;
             }
         }
+
 #else
         for (size_t i = 0; i < meshes.size(); i++) {
-            for (size_t j = i + 1; j < meshes.size(); j++) {
-                pairs.emplace_back(i, j);
+            for (size_t j = 0; j < meshes.size(); j++) {
+                if (i != j) {
+                    pairs.emplace_back(i, j);
+                }
             }
         }
 #endif
@@ -209,6 +215,7 @@ int main(int argc, char *argv[]) {
         double elapsed_naive = std::chrono::duration_cast<std::chrono::milliseconds>(end_naive - start_naive).count();
 #endif
 
+#ifndef PARALLEL_ONLY
         auto start_sequential = std::chrono::high_resolution_clock::now();
         for(const auto &pair: pairs) {
             // run the mcd algorithm
@@ -216,6 +223,10 @@ int main(int argc, char *argv[]) {
             bool collide;
             mcd_cpu(meshes[pair.first]->vertices_, adjs[pair.first], meshes[pair.second]->vertices_, adjs[pair.second], p1, p2,
                     collide, 1e-3);
+            if (collide) {
+                meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0));
+                meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0));
+            }
             // update results
             collide_sequential = collide_sequential || collide;
             double distance = (p1 - p2).norm();
@@ -229,6 +240,7 @@ int main(int argc, char *argv[]) {
         auto end_sequential = std::chrono::high_resolution_clock::now();
         double elapsed_sequential = std::chrono::duration_cast<std::chrono::milliseconds>(
                 end_sequential - start_sequential).count();
+#endif
 
 
         auto start_parallel = std::chrono::high_resolution_clock::now();
@@ -238,6 +250,10 @@ int main(int argc, char *argv[]) {
             bool collide;
             mcd_cuda(meshes[pair.first]->vertices_, adjs[pair.first], meshes[pair.second]->vertices_, adjs[pair.second], p1, p2,
                     collide, 1e-3);
+            if (collide) {
+                meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0) + meshes[pair.first]->vertex_colors_[0]);
+                meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0) + meshes[pair.second]->vertex_colors_[0]);
+            }
             // update results
             collide_parallel = collide_parallel || collide;
             double distance = (p1 - p2).norm();
@@ -267,9 +283,11 @@ int main(int argc, char *argv[]) {
         std::cout << "naive      : " << elapsed_naive << " ms" << std::endl;
         std::cout << "    collide: " << collide_naive << ", minimum distance: " << minimum_distance_naive << std::endl;
 #endif
+#ifndef PARALLEL_ONLY
         std::cout << "sequential : " << elapsed_sequential << " ms" << std::endl;
         std::cout << "    collide: " << collide_sequential << ", minimum distance: " << minimum_distance_sequential
                   << std::endl;
+#endif
         std::cout << "parallel   : " << elapsed_parallel << " ms" << std::endl;
         std::cout << "    collide: " << collide_parallel << ", minimum distance: " << minimum_distance_parallel
                   << std::endl;
