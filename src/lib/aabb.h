@@ -62,6 +62,18 @@ public:
         );
     }
 
+    AABB overlap(const AABB &other) const {
+        AABB overlap;
+        overlap.minimum.x() = std::max(minimum.x(), other.minimum.x());
+        overlap.minimum.y() = std::max(minimum.y(), other.minimum.y());
+        overlap.minimum.z() = std::max(minimum.z(), other.minimum.z());
+
+        overlap.maximum.x() = std::min(maximum.x(), other.maximum.x());
+        overlap.maximum.y() = std::min(maximum.y(), other.maximum.y());
+        overlap.maximum.z() = std::min(maximum.z(), other.maximum.z());
+        return overlap;
+    }
+
     bool contains(const AABB &other) const {
         return (
                 (other.minimum.x() >= minimum.x()) &&
@@ -173,6 +185,10 @@ private:
                     node->left->box.merge(new_box).volume() - node->left->box.volume();
             double right_volume_increase = node->box.merge(new_box).volume() - new_box.volume() +
                     node->right->box.merge(new_box).volume() - node->right->box.volume();
+
+            branch_volume_increase += node->box.overlap(new_box).volume();
+            left_volume_increase += node->left->box.merge(new_box).overlap(node->right->box).volume();
+            right_volume_increase += node->right->box.merge(new_box).overlap(node->left->box).volume();
 
             if (branch_volume_increase < left_volume_increase && branch_volume_increase < right_volume_increase){
                 std::shared_ptr<AABBTreeNode> new_node = std::make_shared<AABBTreeNode>(node->box.merge(new_box));
