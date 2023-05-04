@@ -1,4 +1,4 @@
-
+//
 #include <algorithm>
 #include <iostream>
 #include <fstream>
@@ -14,10 +14,9 @@
 
 //#define USE_NAIVE
 #define USE_AABB_TREE
-#define PARALLEL_ONLY
+//#define PARALLEL_ONLY
 #define BATCH_PARALLEL
 #define USE_RANDOM_MESHES
-#define PRECOMPUTE
 
 
 int main(int argc, char *argv[]) {
@@ -32,6 +31,7 @@ int main(int argc, char *argv[]) {
     /* Get the arguments */
     std::string input_file_path = argv[1];
     double collision_margin = (argc == 3) ? std::stod(argv[2]) : std::numeric_limits<double>::max();
+    collision_margin = 0;
 
     /* Load the inputs */
     std::vector<std::string> model_file_paths;
@@ -74,11 +74,11 @@ int main(int argc, char *argv[]) {
 #ifdef USE_RANDOM_MESHES
     // create meshes programatically
     srand(time(NULL));
-    for (size_t i = 0; i < 100; i++) {
-        auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(3.0, 10);
+    for (size_t i = 0; i < 1000; i++) {
+        auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(2, 30);
         mesh_1->ComputeVertexNormals();
         mesh_1->ComputeAdjacencyList();
-        mesh_1->Translate({rand() % 100, rand() % 100, rand() % 100});
+        mesh_1->Translate({rand() % 10, rand() % 10, rand() % 10});
 
 
         // extract the adjacency list
@@ -190,6 +190,7 @@ int main(int argc, char *argv[]) {
             meshes_vertices.push_back(mesh->vertices_);
         }
         std::vector<AABB> aabbs = extract_AABB(meshes_vertices);
+        auto start_filtering = std::chrono::high_resolution_clock::now();
 #ifdef USE_AABB_TREE
         AABBTree aabb_tree;
         for (const auto& aabb : aabbs) {
@@ -226,6 +227,10 @@ int main(int argc, char *argv[]) {
             }
         }
 #endif
+        auto end_filtering = std::chrono::high_resolution_clock::now();
+        double elapsed_filtering = std::chrono::duration_cast<std::chrono::milliseconds>(end_filtering - start_filtering).count();
+        std::cout << "filtering time: " << elapsed_filtering << " ms" << std::endl;
+        continue;
 
         for (const auto &pair: pairs) {
             distance_sequential[pair.first] = std::numeric_limits<double>::max();
@@ -350,7 +355,7 @@ int main(int argc, char *argv[]) {
             }
         }
         auto end_parallel = std::chrono::high_resolution_clock::now();
-        double elapsed_parallel = std::chrono::duration_cast<std::chrono::milliseconds>(
+        double elapsed_parallel = std::chrono::duration_cast<std::chrono::microseconds>(
                 end_parallel - start_parallel).count();
 #endif
 
@@ -364,6 +369,7 @@ int main(int argc, char *argv[]) {
 
         // report runtime for both sequential and parallel
         std::cout << "----------------------------------------" << std::endl;
+        std::cout << "filtering      : " << elapsed_filtering << " us" << std::endl;
 #ifdef USE_NAIVE
         std::cout << "naive      : " << elapsed_naive << " ms" << std::endl;
         std::cout << "    collide: " << collide_naive << ", minimum distance: " << minimum_distance_naive << std::endl;

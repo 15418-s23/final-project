@@ -4,6 +4,8 @@
 #include <open3d/3rdparty/Eigen/Geometry>
 #include "mcd.cuh"
 
+#define PRECOMPUTE_TERMS
+
 //__device__ void support_function_kernel(Eigen::Vector3d *vertices,
 //                                        int vertices_size,
 //                                        const Eigen::Vector3d &direction,
@@ -113,8 +115,8 @@ __device__ void simplex_origin_lambda(Eigen::Vector3d *vertices1,
             {0, 1, 2}
     };
 
-    // Precompute
-    //// Precompute vects (basically c-space points)
+    // PRECOMPUTE_TERMS
+    //// PRECOMPUTE_TERMS vects (basically c-space points)
     if (mainthread) {
         for (int i = 0; i < 5; i++) {
             vects[i][0] = 0;
@@ -130,50 +132,67 @@ __device__ void simplex_origin_lambda(Eigen::Vector3d *vertices1,
 
     __syncthreads();
 
-    //// Precompute diffs (c-space edges)
-#ifdef PRECOMPUTE
+    //// PRECOMPUTE_TERMS diffs (c-space edges)
+#ifdef PRECOMPUTE_TERMS
     if (threadIdx.x < 25) {
         int i = threadIdx.x;
-#else
-    for (int i = 0; i < 25; i++) {
-        if (!mainthread) continue;
-#endif
         diffs[i][0] = vects[vect2diff_map[i][1]][0] - vects[vect2diff_map[i][0]][0];
         diffs[i][1] = vects[vect2diff_map[i][1]][1] - vects[vect2diff_map[i][0]][1];
         diffs[i][2] = vects[vect2diff_map[i][1]][2] - vects[vect2diff_map[i][0]][2];
     }
+#else
+    if (mainthread) {
+        for (int i = 0; i < 25; i++) {
+            diffs[i][0] = vects[vect2diff_map[i][1]][0] - vects[vect2diff_map[i][0]][0];
+            diffs[i][1] = vects[vect2diff_map[i][1]][1] - vects[vect2diff_map[i][0]][1];
+            diffs[i][2] = vects[vect2diff_map[i][1]][2] - vects[vect2diff_map[i][0]][2];
+        }
+    }
+#endif
 
     __syncthreads();
 
-    //// Precompute dots (c-space dot products)
-#ifdef PRECOMPUTE
+    //// PRECOMPUTE_TERMS dots (c-space dot products)
+#ifdef PRECOMPUTE_TERMS
     if (threadIdx.x < 25) {
         int i = threadIdx.x;
-#else
-    for (int i = 0; i < 25; i++) {
-        if (!mainthread) continue;
-#endif
         for (int j = 0; j < 25; j++) {
             dots[i][j] = diffs[i][0] * diffs[j][0] + diffs[i][1] * diffs[j][1] + diffs[i][2] * diffs[j][2];
         }
     }
+#else
+    if (mainthread) {
+        for (int i = 0; i < 25; i++) {
+            for (int j = 0; j < 25; j++) {
+                dots[i][j] = diffs[i][0] * diffs[j][0] + diffs[i][1] * diffs[j][1] + diffs[i][2] * diffs[j][2];
+            }
+        }
+    }
+#endif
 
     __syncthreads();
 
-    //// Precompute crosses & areas (c-space cross products)
-#ifdef PRECOMPUTE
+    //// PRECOMPUTE_TERMS crosses & areas (c-space cross products)
+#ifdef PRECOMPUTE_TERMS
     if (threadIdx.x < 25) {
         int i = threadIdx.x;
-#else
-    for (int i = 0; i < 25; i++) {
-        if (!mainthread) continue;
-#endif
         for (int j = 0; j < 25; j++) {
             cross(diffs[i], diffs[j], crosses[i][j]);
             areasqs[i][j] = crosses[i][j][0] * crosses[i][j][0] + crosses[i][j][1] * crosses[i][j][1] +
                             crosses[i][j][2] * crosses[i][j][2];
         }
     }
+#else
+    if (mainthread) {
+        for (int i = 0; i < 25; i++) {
+            for (int j = 0; j < 25; j++) {
+                cross(diffs[i], diffs[j], crosses[i][j]);
+                areasqs[i][j] = crosses[i][j][0] * crosses[i][j][0] + crosses[i][j][1] * crosses[i][j][1] +
+                                crosses[i][j][2] * crosses[i][j][2];
+            }
+        }
+    }
+#endif
 
     __syncthreads();
 
@@ -666,7 +685,7 @@ void mcd_cuda_batch(std::vector<Eigen::Vector3d> &vertices,
     // Run kernel
     dim3 block(32, 1, 1);
     mcd_batch_kernel<<<pair_size, block>>>(vertices_gpu, vertices_offset_gpu, vertices_size_gpu, mesh1_gpu, mesh2_gpu,
-                                    pair_size_gpu, eps_gpu, point1_gpu, point2_gpu, collide_gpu);
+                                           pair_size_gpu, eps_gpu, point1_gpu, point2_gpu, collide_gpu);
 
     cudaDeviceSynchronize();
     // Copy data back to CPU
