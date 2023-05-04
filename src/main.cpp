@@ -14,7 +14,7 @@
 #include "mcd.cuh"
 
 //#define USE_NAIVE
-//#define USE_AABB_TREE
+#define USE_AABB_TREE
 //#define PARALLEL_ONLY
 #define BATCH_PARALLEL
 
@@ -73,8 +73,9 @@ int main(int argc, char *argv[]) {
     options.print_progress = false;
 
     // create meshes programatically
+    /*
     srand(time(NULL));
-    for (size_t i = 0; i < 100; i++) {
+    for (size_t i = 0; i < 10; i++) {
         auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(1.0, 10);
         mesh_1->ComputeVertexNormals();
         mesh_1->ComputeAdjacencyList();
@@ -91,34 +92,35 @@ int main(int argc, char *argv[]) {
         meshes.push_back(mesh_1);
         adjs.push_back(adj);
     }
+    */
 
-//    // load the meshes from OBJ files
-//    for (size_t i = 0; i < model_file_paths.size(); i++) {
-//        // read a mesh from OBJ file
-//        open3d::geometry::TriangleMesh mesh;
-//        bool read_success = open3d::io::ReadTriangleMeshFromOBJ(model_file_paths[i], mesh, options);
-//        if (!read_success) {
-//            throw std::runtime_error("cannot load model: " + model_file_paths[i]);
-//        }
-//
-//        // apply translation based on base coordinates
-//        mesh.Translate(base_coordinates[i]);
-//
-//        // compute adjacency list
-//        mesh.ComputeVertexNormals();
-//        mesh.ComputeAdjacencyList();
-//
-//        // extract the adjacency list
-//        std::vector< std::vector<int> > adj(mesh.adjacency_list_.size());
-//        for (const auto& unordered_set : mesh.adjacency_list_) {
-//            adj.emplace_back(unordered_set.begin(), unordered_set.end());
-//        }
-//
-//        // add the mesh to the list
-//        std::shared_ptr<open3d::geometry::TriangleMesh> mesh_ptr = std::make_shared<open3d::geometry::TriangleMesh>(mesh);
-//        meshes.push_back(mesh_ptr);
-//        adjs.push_back(adj);
-//    }
+    // load the meshes from OBJ files
+    for (size_t i = 0; i < model_file_paths.size(); i++) {
+        // read a mesh from OBJ file
+        open3d::geometry::TriangleMesh mesh;
+        bool read_success = open3d::io::ReadTriangleMeshFromOBJ(model_file_paths[i], mesh, options);
+        if (!read_success) {
+            throw std::runtime_error("cannot load model: " + model_file_paths[i]);
+        }
+
+        // apply translation based on base coordinates
+        mesh.Translate(base_coordinates[i]);
+
+        // compute adjacency list
+        mesh.ComputeVertexNormals();
+        mesh.ComputeAdjacencyList();
+
+        // extract the adjacency list
+        std::vector< std::vector<int> > adj(mesh.adjacency_list_.size());
+        for (const auto& unordered_set : mesh.adjacency_list_) {
+            adj.emplace_back(unordered_set.begin(), unordered_set.end());
+        }
+
+        // add the mesh to the list
+        std::shared_ptr<open3d::geometry::TriangleMesh> mesh_ptr = std::make_shared<open3d::geometry::TriangleMesh>(mesh);
+        meshes.push_back(mesh_ptr);
+        adjs.push_back(adj);
+    }
 
 
     /* Initialize the line that marks the minimum distances */
@@ -246,10 +248,6 @@ int main(int argc, char *argv[]) {
             bool collide;
             mcd_cpu(meshes[pair.first]->vertices_, adjs[pair.first], meshes[pair.second]->vertices_, adjs[pair.second], p1, p2,
                     collide, 1e-3);
-            if (collide) {
-                meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0));
-                meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0));
-            }
             // update results
             collide_sequential = collide_sequential || collide;
             double distance = collide ? 0.0 : (p1 - p2).norm();
@@ -261,7 +259,7 @@ int main(int argc, char *argv[]) {
             }
         }
         auto end_sequential = std::chrono::high_resolution_clock::now();
-        double elapsed_sequential = std::chrono::duration_cast<std::chrono::milliseconds>(
+        double elapsed_sequential = std::chrono::duration_cast<std::chrono::microseconds>(
                 end_sequential - start_sequential).count();
 #endif
 
@@ -301,10 +299,6 @@ int main(int argc, char *argv[]) {
             Eigen::Vector3d p1 = p1_vector[i];
             Eigen::Vector3d p2 = p2_vector[i];
             bool collide = collide_vector[i] > 0;
-            if (collide) {
-                meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0));
-                meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0));
-            }
             // update results
             collide_parallel = collide_parallel || collide;
             double distance = collide ? 0.0 : (p1 - p2).norm();
@@ -316,7 +310,7 @@ int main(int argc, char *argv[]) {
             }
         }
         auto end_parallel = std::chrono::high_resolution_clock::now();
-        double elapsed_parallel = std::chrono::duration_cast<std::chrono::milliseconds>(
+        double elapsed_parallel = std::chrono::duration_cast<std::chrono::microseconds>(
                 end_parallel - start_parallel).count();
 #else
         auto start_parallel = std::chrono::high_resolution_clock::now();
@@ -360,11 +354,11 @@ int main(int argc, char *argv[]) {
         std::cout << "    collide: " << collide_naive << ", minimum distance: " << minimum_distance_naive << std::endl;
 #endif
 #ifndef PARALLEL_ONLY
-        std::cout << "sequential : " << elapsed_sequential << " ms" << std::endl;
+        std::cout << "sequential : " << elapsed_sequential << " us" << std::endl;
         std::cout << "    collide: " << collide_sequential << ", minimum distance: " << minimum_distance_sequential
                   << std::endl;
 #endif
-        std::cout << "parallel   : " << elapsed_parallel << " ms" << std::endl;
+        std::cout << "parallel   : " << elapsed_parallel << " us" << std::endl;
         std::cout << "    collide: " << collide_parallel << ", minimum distance: " << minimum_distance_parallel
                   << std::endl;
 
