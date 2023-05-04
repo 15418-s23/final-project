@@ -421,8 +421,8 @@ __global__ void mcd_kernel(Eigen::Vector3d *vertices1_gpu,
         }
 
 
-            support_function_kernel(vertices1_gpu, *vertices1_gpu_size, -Eigen::Map<Eigen::Vector3d>(d), &s1);
-            support_function_kernel(vertices2_gpu, *vertices2_gpu_size, Eigen::Map<Eigen::Vector3d>(d), &s2);
+        support_function_kernel(vertices1_gpu, *vertices1_gpu_size, -Eigen::Map<Eigen::Vector3d>(d), &s1);
+        support_function_kernel(vertices2_gpu, *vertices2_gpu_size, Eigen::Map<Eigen::Vector3d>(d), &s2);
 
         __syncthreads();
 
@@ -451,6 +451,224 @@ __global__ void mcd_kernel(Eigen::Vector3d *vertices1_gpu,
         init = false;
         __syncthreads();
     }
+}
+
+__global__ void mcd_batch_kernel(Eigen::Vector3d *vertices_gpu_,
+                                 long *vertices_offest_,
+                                 long *vertices_size_,
+                                 int *mesh1_gpu_,
+                                 int *mesh2_gpu_,
+                                 int *pair_size_gpu_,
+                                 double *eps,
+                                 Eigen::Vector3d *point1_gpu_,
+                                 Eigen::Vector3d *point2_gpu_,
+                                 char *collide_gpu_) {
+
+
+    __shared__ long s1;
+    __shared__ long s2;
+    __shared__ double d[3];
+    __shared__ long simplex_left[4];
+    __shared__ long simplex_right[4];
+    __shared__ double simplex_lambda[4];
+    __shared__ bool branch;
+
+    bool mainthread = threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0;
+    double tol = 1e-10;
+
+    // early exit
+    if (blockIdx.x >= *pair_size_gpu_) {
+        return;
+    }
+
+    // get assigned range
+    int pair_1 = mesh1_gpu_[blockIdx.x];
+    int pair_2 = mesh2_gpu_[blockIdx.x];
+    Eigen::Vector3d *vertices1_gpu = vertices_gpu_ + vertices_offest_[pair_1];
+    Eigen::Vector3d *vertices2_gpu = vertices_gpu_ + vertices_offest_[pair_2];
+    long *vertices1_gpu_size = vertices_size_ + pair_1;
+    long *vertices2_gpu_size = vertices_size_ + pair_2;
+    char *collide_gpu = collide_gpu_ + blockIdx.x;
+    Eigen::Vector3d *point1_gpu = point1_gpu_ + blockIdx.x;
+    Eigen::Vector3d *point2_gpu = point2_gpu_ + blockIdx.x;
+
+
+    if (mainthread) {
+        *collide_gpu = 0;
+        branch = false;
+        d[0] = 0.0;
+        d[1] = 0.0;
+        d[2] = 1.0;
+    }
+
+    __syncthreads();
+
+    support_function_kernel(vertices1_gpu, *vertices1_gpu_size, Eigen::Map<Eigen::Vector3d>(d), &s1);
+    support_function_kernel(vertices2_gpu, *vertices2_gpu_size, -Eigen::Map<Eigen::Vector3d>(d), &s2);
+
+    __syncthreads();
+
+    if (mainthread) {
+        simplex_left[0] = s1;
+        simplex_left[1] = -1;
+        simplex_left[2] = -1;
+        simplex_left[3] = -1;
+        simplex_right[0] = s2;
+        simplex_right[1] = -1;
+        simplex_right[2] = -1;
+        simplex_right[3] = -1;
+        simplex_lambda[0] = 1.0;
+        simplex_lambda[1] = 0.0;
+        simplex_lambda[2] = 0.0;
+        simplex_lambda[3] = 0.0;
+    }
+
+    __syncthreads();
+
+    Eigen::Vector3d point1_, point2_;
+    double dist = (vertices1_gpu[simplex_left[0]] - vertices2_gpu[simplex_right[0]]).squaredNorm();
+    bool init = true;
+    for (;;) {
+        simplex_origin_lambda(vertices1_gpu, vertices2_gpu, simplex_left, simplex_right, simplex_lambda);
+        if (simplex_lambda[0] > tol && simplex_lambda[1] > tol && simplex_lambda[2] > tol && simplex_lambda[3] > tol) {
+            if (mainthread) {
+                *collide_gpu = 1;
+            }
+            break;
+        }
+        __syncthreads();
+
+        // Get the support point
+        if (mainthread) {
+            point1_ =
+                    simplex_lambda[0] * vertices1_gpu[simplex_left[0]] +
+                    simplex_lambda[1] * vertices1_gpu[simplex_left[1]] +
+                    simplex_lambda[2] * vertices1_gpu[simplex_left[2]] +
+                    simplex_lambda[3] * vertices1_gpu[simplex_left[3]];
+            point2_ =
+                    simplex_lambda[0] * vertices2_gpu[simplex_right[0]] +
+                    simplex_lambda[1] * vertices2_gpu[simplex_right[1]] +
+                    simplex_lambda[2] * vertices2_gpu[simplex_right[2]] +
+                    simplex_lambda[3] * vertices2_gpu[simplex_right[3]];
+
+            d[0] = point1_[0] - point2_[0];
+            d[1] = point1_[1] - point2_[1];
+            d[2] = point1_[2] - point2_[2];
+
+            double newdist = (point1_ - point2_).squaredNorm();
+            if (!init && dist - newdist < *eps) {
+                branch = true;
+            } else {
+                dist = newdist;
+            }
+        }
+        __syncthreads();
+        if (branch) {
+            break;
+        }
+
+
+        support_function_kernel(vertices1_gpu, *vertices1_gpu_size, -Eigen::Map<Eigen::Vector3d>(d), &s1);
+        support_function_kernel(vertices2_gpu, *vertices2_gpu_size, Eigen::Map<Eigen::Vector3d>(d), &s2);
+
+        __syncthreads();
+
+        if (mainthread) {
+            int j = 0;
+            for (int k = 0; k < 4; ++k) {
+                if (simplex_lambda[k] > 0.0) {
+                    simplex_left[j] = simplex_left[k];
+                    simplex_right[j] = simplex_right[k];
+                    simplex_lambda[j] = simplex_lambda[k];
+                    ++j;
+                }
+            }
+            simplex_left[j] = s1;
+            simplex_right[j] = s2;
+            simplex_lambda[j] = 1.0;
+            ++j;
+            for (; j < 4; ++j) {
+                simplex_left[j] = -1;
+                simplex_right[j] = -1;
+                simplex_lambda[j] = 0.0;
+            }
+            *point1_gpu = point1_;
+            *point2_gpu = point2_;
+        }
+        init = false;
+        __syncthreads();
+    }
+}
+
+void mcd_cuda_batch(std::vector<Eigen::Vector3d> &vertices,
+                    std::vector<long> &vertices_offset,
+                    std::vector<long> &vertices_size,
+                    std::vector<int> &mesh1,
+                    std::vector<int> &mesh2,
+                    std::vector<Eigen::Vector3d> &point1,
+                    std::vector<Eigen::Vector3d> &point2,
+                    std::vector<char> &collide,
+                    double eps) {
+    // vars
+    int pair_size = mesh1.size();
+
+    // Copy data to GPU
+    Eigen::Vector3d *vertices_gpu;
+    long *vertices_offset_gpu;
+    long *vertices_size_gpu;
+    int *mesh1_gpu;
+    int *mesh2_gpu;
+    Eigen::Vector3d *point1_gpu;
+    Eigen::Vector3d *point2_gpu;
+    char *collide_gpu;
+    double *eps_gpu;
+    int *pair_size_gpu;
+
+    cudaMalloc((void **) &vertices_gpu, vertices.size() * sizeof(Eigen::Vector3d));
+    cudaMalloc((void **) &vertices_offset_gpu, vertices_offset.size() * sizeof(long));
+    cudaMalloc((void **) &vertices_size_gpu, vertices_size.size() * sizeof(long));
+    cudaMalloc((void **) &mesh1_gpu, mesh1.size() * sizeof(int));
+    cudaMalloc((void **) &mesh2_gpu, mesh2.size() * sizeof(int));
+    cudaMalloc((void **) &point1_gpu, point1.size() * sizeof(Eigen::Vector3d));
+    cudaMalloc((void **) &point2_gpu, point2.size() * sizeof(Eigen::Vector3d));
+    cudaMalloc((void **) &collide_gpu, collide.size() * sizeof(char));
+    cudaMalloc((void **) &eps_gpu, sizeof(double));
+    cudaMalloc((void **) &pair_size_gpu, sizeof(int));
+
+    cudaMemcpy(vertices_gpu, vertices.data(), vertices.size() * sizeof(Eigen::Vector3d), cudaMemcpyHostToDevice);
+    cudaMemcpy(vertices_offset_gpu, vertices_offset.data(), vertices_offset.size() * sizeof(long),
+               cudaMemcpyHostToDevice);
+    cudaMemcpy(vertices_size_gpu, vertices_size.data(), vertices_size.size() * sizeof(long), cudaMemcpyHostToDevice);
+    cudaMemcpy(mesh1_gpu, mesh1.data(), mesh1.size() * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(mesh2_gpu, mesh2.data(), mesh2.size() * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(point1_gpu, point1.data(), point1.size() * sizeof(Eigen::Vector3d), cudaMemcpyHostToDevice);
+    cudaMemcpy(point2_gpu, point2.data(), point2.size() * sizeof(Eigen::Vector3d), cudaMemcpyHostToDevice);
+    cudaMemcpy(collide_gpu, collide.data(), collide.size() * sizeof(char), cudaMemcpyHostToDevice);
+    cudaMemcpy(eps_gpu, &eps, sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(pair_size_gpu, &pair_size, sizeof(int), cudaMemcpyHostToDevice);
+
+    // Run kernel
+    dim3 block(32, 1, 1);
+    mcd_batch_kernel<<<pair_size, block>>>(vertices_gpu, vertices_offset_gpu, vertices_size_gpu, mesh1_gpu, mesh2_gpu,
+                                    pair_size_gpu, eps_gpu, point1_gpu, point2_gpu, collide_gpu);
+
+    cudaDeviceSynchronize();
+    // Copy data back to CPU
+    cudaMemcpy(point1.data(), point1_gpu, point1.size() * sizeof(Eigen::Vector3d), cudaMemcpyDeviceToHost);
+    cudaMemcpy(point2.data(), point2_gpu, point2.size() * sizeof(Eigen::Vector3d), cudaMemcpyDeviceToHost);
+    cudaMemcpy(collide.data(), collide_gpu, collide.size() * sizeof(char), cudaMemcpyDeviceToHost);
+
+    // Free memory
+    cudaFree(vertices_gpu);
+    cudaFree(vertices_offset_gpu);
+    cudaFree(vertices_size_gpu);
+    cudaFree(mesh1_gpu);
+    cudaFree(mesh2_gpu);
+    cudaFree(point1_gpu);
+    cudaFree(point2_gpu);
+    cudaFree(collide_gpu);
+    cudaFree(eps_gpu);
+    cudaFree(pair_size_gpu);
 }
 
 void mcd_cuda(std::vector<Eigen::Vector3d> &vertices1,

@@ -25,6 +25,16 @@ void mcd_cuda(std::vector<Eigen::Vector3d> &vertices1,
               bool &collide,
               double eps);
 
+void mcd_cuda_batch(std::vector<Eigen::Vector3d> &vertices,
+              std::vector<long> &vertices_offset,
+              std::vector<long> &vertices_size,
+              std::vector<int> &mesh1,
+              std::vector<int> &mesh2,
+              std::vector<Eigen::Vector3d> &point1,
+              std::vector<Eigen::Vector3d> &point2,
+              std::vector<char> &collide,
+              double eps)  ;
+
 std::vector<double> barycentric(std::vector<Eigen::Vector3d> &vertices,
                                 Eigen::Vector3d &point);
 

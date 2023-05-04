@@ -16,6 +16,7 @@
 //#define USE_NAIVE
 #define USE_AABB_TREE
 //#define PARALLEL_ONLY
+#define BATCH_PARALLEL
 
 
 int main(int argc, char *argv[]) {
@@ -242,7 +243,60 @@ int main(int argc, char *argv[]) {
                 end_sequential - start_sequential).count();
 #endif
 
+#ifdef BATCH_PARALLEL
+        // concat mesh vertices. we do not time this since it is just the organization of the data
+        std::vector<Eigen::Vector3d> vertices;
+        std::vector<long> vertices_offset;
+        std::vector<long> vertices_size;
+        std::vector<int> pairs_1;
+        std::vector<int> pairs_2;
+        long offset = 0;
+        for (const auto& mesh : meshes) {
+            vertices.insert(vertices.end(), mesh->vertices_.begin(), mesh->vertices_.end());
+            vertices_offset.push_back(offset);
+            vertices_size.push_back(mesh->vertices_.size());
+            offset += mesh->vertices_.size();
+        }
+        for (const auto& pair : pairs) {
+            pairs_1.push_back(pair.first);
+            pairs_2.push_back(pair.second);
+        }
 
+        auto start_parallel = std::chrono::high_resolution_clock::now();
+
+        // returning values
+        std::vector<Eigen::Vector3d> p1_vector(pairs.size());
+        std::vector<Eigen::Vector3d> p2_vector(pairs.size());
+        std::vector<char> collide_vector(pairs.size());
+
+        // run the mcd algorithm
+        mcd_cuda_batch(vertices, vertices_offset, vertices_size, pairs_1, pairs_2, p1_vector, p2_vector, collide_vector, 1e-3);
+
+        // update results
+        for(int i = 0; i < pairs.size(); i++) {
+            const auto &pair = pairs[i];
+            // run the mcd algorithm
+            Eigen::Vector3d p1 = p1_vector[i];
+            Eigen::Vector3d p2 = p2_vector[i];
+            bool collide = collide_vector[i] > 0;
+            if (collide) {
+                meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0) + meshes[pair.first]->vertex_colors_[0]);
+                meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0) + meshes[pair.second]->vertex_colors_[0]);
+            }
+            // update results
+            collide_parallel = collide_parallel || collide;
+            double distance = (p1 - p2).norm();
+            double old_distance = distance_parallel[pair.first];
+            if (distance < old_distance) {
+                distance_parallel[pair.first] = distance;
+                line_sets_parallel[pair.first]->points_[0] = p1;
+                line_sets_parallel[pair.first]->points_[1] = p2;
+            }
+        }
+        auto end_parallel = std::chrono::high_resolution_clock::now();
+        double elapsed_parallel = std::chrono::duration_cast<std::chrono::milliseconds>(
+                end_parallel - start_parallel).count();
+#else
         auto start_parallel = std::chrono::high_resolution_clock::now();
         for(const auto &pair: pairs) {
             // run the mcd algorithm
@@ -267,7 +321,7 @@ int main(int argc, char *argv[]) {
         auto end_parallel = std::chrono::high_resolution_clock::now();
         double elapsed_parallel = std::chrono::duration_cast<std::chrono::milliseconds>(
                 end_parallel - start_parallel).count();
-
+#endif
 
         // stats
         double minimum_distance_sequential = std::numeric_limits<double>::max();
