@@ -25,12 +25,12 @@ public:
 
     void operator=(const AABB &other) {
         id = other.id;
-        minimum[0] = 0.0;
-        minimum[1] = 0.0;
-        minimum[2] = 0.0;
-        maximum[0] = 0.0;
-        maximum[1] = 0.0;
-        maximum[2] = 0.0;
+        minimum[0] = other.minimum[0];
+        minimum[1] = other.minimum[1];
+        minimum[2] = other.minimum[2];
+        maximum[0] = other.maximum[0];
+        maximum[1] = other.maximum[1];
+        maximum[2] = other.maximum[2];
     }
 
     AABB(Eigen::Vector3d min_, Eigen::Vector3d max_, int id_)
@@ -103,8 +103,8 @@ public:
 class AABBTreeNode {
 public:
     AABB box;
-    std::unique_ptr<AABBTreeNode> left = nullptr;
-    std::unique_ptr<AABBTreeNode> right = nullptr;
+    std::shared_ptr<AABBTreeNode> left = nullptr;
+    std::shared_ptr<AABBTreeNode> right = nullptr;
 
     AABBTreeNode(const AABB &box)
             : box(box) {}
@@ -120,13 +120,13 @@ public:
  */
 class AABBTree {
 public:
-    std::unique_ptr<AABBTreeNode> root;
+    std::shared_ptr<AABBTreeNode> root;
 
     void insert(const AABB box) {
         if (!root) {
-            root = std::make_unique<AABBTreeNode>(box);
+            root = std::make_shared<AABBTreeNode>(box);
         } else {
-            insert_and_merge_recursive(root.get(), box);
+            root = insert_and_merge_recursive(root, box);
         }
     }
 
@@ -134,86 +134,67 @@ public:
         if (!root) {
             return;
         } else {
-            collect_collision_recursive(root.get(), box, boxes);
+            collect_collision_recursive(root, box, boxes);
         }
     }
 
 private:
-    void collect_collision_recursive(AABBTreeNode *node, const AABB& box, std::vector<AABB> &boxes) {
+    void collect_collision_recursive(const std::shared_ptr<AABBTreeNode>& node, const AABB& box, std::vector<AABB> &boxes) {
         if (!node->left && !node->right) {
-            if (node->box.intersects(box) && node->box.id != box.id)
+            assert (node->box.id != -1);
+            if ( node->box.id != -1 && node->box.id != box.id)
                 boxes.push_back(node->box);
             return;
         } else {
             if (node->left && node->left->box.intersects(box)) {
-                collect_collision_recursive(node->left.get(), box, boxes);
+                collect_collision_recursive(node->left, box, boxes);
             }
             if (node->right && node->right->box.intersects(box)) {
-                collect_collision_recursive(node->right.get(), box, boxes);
+                collect_collision_recursive(node->right, box, boxes);
             }
         }
     }
 
-    void insert_and_merge_recursive(AABBTreeNode *node, const AABB &new_box) {
+    std::shared_ptr<AABBTreeNode> insert_and_merge_recursive(std::shared_ptr<AABBTreeNode> node, const AABB &new_box) {
 
         // if the current node has no children
         if (!node->left && !node->right) {
-            // otherwise, we need to create children nodes
-            node->left = std::make_unique<AABBTreeNode>(node->box);
-            node->right = std::make_unique<AABBTreeNode>(new_box);
-
-            // and extend the current node's box to contain the new box
-            node->box = node->box.merge(new_box);
-            return;
+            std::shared_ptr<AABBTreeNode> new_node = std::make_shared<AABBTreeNode>(node->box.merge(new_box));
+            new_node->left = node;
+            new_node->right = std::make_shared<AABBTreeNode>(new_box);
+            new_node->box = node->box.merge(new_box);
+            return new_node;
         }
 
             // if the current node has both children (i.e. it is not a leaf node)
         else {
-            bool intersects_left = node->left && node->left->box.intersects(new_box);
-            bool intersects_right = node->right && node->right->box.intersects(new_box);
+            double branch_volume_increase = node->box.merge(new_box).volume();
+            double left_volume_increase = node->box.merge(new_box).volume() - new_box.volume() +
+                    node->left->box.merge(new_box).volume() - node->left->box.volume();
+            double right_volume_increase = node->box.merge(new_box).volume() - new_box.volume() +
+                    node->right->box.merge(new_box).volume() - node->right->box.volume();
 
-            if (intersects_left || intersects_right) {
-                // if the new box intersects the left child's box
-                if (intersects_left) {
-                    // insert the new box into the left child
-                    insert_and_merge_recursive(node->left.get(), new_box);
-                }
-
-                // if the new box intersects the right child's box
-                if (intersects_right) {
-                    // insert the new box into the right child
-                    insert_and_merge_recursive(node->right.get(), new_box);
-                }
-
-                // and extend the current node's box to contain the new box
+            if (branch_volume_increase < left_volume_increase && branch_volume_increase < right_volume_increase){
+                std::shared_ptr<AABBTreeNode> new_node = std::make_shared<AABBTreeNode>(node->box.merge(new_box));
+                new_node->left = node;
+                new_node->right = std::make_shared<AABBTreeNode>(new_box);
+                return new_node;
+            }
+            else if (left_volume_increase < right_volume_increase) {
                 node->box = node->box.merge(new_box);
-                return;
-            }
-
-            // the only case left is that the new box does not intersect any of the children's boxes
-            // in this case, we'll need to determine which child to insert the new box into
-            // a naïve approach would be to insert the new box into the child with which the new box is smaller
-            // however, this approach is not optimal because it may result in a very unbalanced tree
-            // but, given that the objects we have do not tend to be very long and thin, this approach should be good enough
-            double left_volume_increase = node->left->box.merge(new_box).volume() - node->left->box.volume();
-            double right_volume_increase = node->right->box.merge(new_box).volume() - node->right->box.volume();
-            if (left_volume_increase < right_volume_increase) {
-                insert_and_merge_recursive(node->left.get(), new_box);
+                node->left = insert_and_merge_recursive(node->left, new_box);
+                return node;
             } else {
-                insert_and_merge_recursive(node->right.get(), new_box);
+                node->right = insert_and_merge_recursive(node->right, new_box);
+                node->box = node->right->box.merge(node->left->box);
+                return node;
             }
-
-            // and extend the current node's box to contain the new box
-            node->box = node->box.merge(new_box);
-            return;
         }
     }
 };
 
 std::vector<AABB> extract_AABB(std::vector<std::vector<Eigen::Vector3d>> &meshes) {
     std::vector<AABB> aabbs;
-    // parallelize with omp
-#pragma omp parallel for default(none) shared(meshes, aabbs)
     for (int i = 0; i < meshes.size(); i++) {
         Eigen::Vector3d minimum = meshes[i][0];
         Eigen::Vector3d maximum = meshes[i][0];

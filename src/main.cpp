@@ -14,7 +14,7 @@
 #include "mcd.cuh"
 
 //#define USE_NAIVE
-#define USE_AABB_TREE
+//#define USE_AABB_TREE
 //#define PARALLEL_ONLY
 #define BATCH_PARALLEL
 
@@ -32,6 +32,7 @@ int main(int argc, char *argv[]) {
     std::string input_file_path = argv[1];
     double collision_margin = (argc == 3) ? std::stod(argv[2]) : 0.0;
     collision_margin = std::numeric_limits<double>::max();
+    collision_margin = 0.5;
 
     /* Load the inputs */
     std::vector<std::string> model_file_paths;
@@ -70,32 +71,54 @@ int main(int argc, char *argv[]) {
     open3d::io::ReadTriangleMeshOptions options;
     options.enable_post_processing = false;
     options.print_progress = false;
-    for (size_t i = 0; i < model_file_paths.size(); i++) {
-        // read a mesh from OBJ file
-        open3d::geometry::TriangleMesh mesh;
-        bool read_success = open3d::io::ReadTriangleMeshFromOBJ(model_file_paths[i], mesh, options);
-        if (!read_success) {
-            throw std::runtime_error("cannot load model: " + model_file_paths[i]);
-        }
 
-        // apply translation based on base coordinates
-        mesh.Translate(base_coordinates[i]);
+    // create meshes programatically
+    srand(time(NULL));
+    for (size_t i = 0; i < 100; i++) {
+        auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(1.0, 10);
+        mesh_1->ComputeVertexNormals();
+        mesh_1->ComputeAdjacencyList();
+        mesh_1->Translate({rand() % 100, rand() % 100, rand() % 100});
 
-        // compute adjacency list
-        mesh.ComputeVertexNormals();
-        mesh.ComputeAdjacencyList();
 
         // extract the adjacency list
-        std::vector< std::vector<int> > adj(mesh.adjacency_list_.size());
-        for (const auto& unordered_set : mesh.adjacency_list_) {
+        std::vector< std::vector<int> > adj(mesh_1->adjacency_list_.size());
+        for (const auto& unordered_set : mesh_1->adjacency_list_) {
             adj.emplace_back(unordered_set.begin(), unordered_set.end());
         }
 
         // add the mesh to the list
-        std::shared_ptr<open3d::geometry::TriangleMesh> mesh_ptr = std::make_shared<open3d::geometry::TriangleMesh>(mesh);
-        meshes.push_back(mesh_ptr);
+        meshes.push_back(mesh_1);
         adjs.push_back(adj);
     }
+
+//    // load the meshes from OBJ files
+//    for (size_t i = 0; i < model_file_paths.size(); i++) {
+//        // read a mesh from OBJ file
+//        open3d::geometry::TriangleMesh mesh;
+//        bool read_success = open3d::io::ReadTriangleMeshFromOBJ(model_file_paths[i], mesh, options);
+//        if (!read_success) {
+//            throw std::runtime_error("cannot load model: " + model_file_paths[i]);
+//        }
+//
+//        // apply translation based on base coordinates
+//        mesh.Translate(base_coordinates[i]);
+//
+//        // compute adjacency list
+//        mesh.ComputeVertexNormals();
+//        mesh.ComputeAdjacencyList();
+//
+//        // extract the adjacency list
+//        std::vector< std::vector<int> > adj(mesh.adjacency_list_.size());
+//        for (const auto& unordered_set : mesh.adjacency_list_) {
+//            adj.emplace_back(unordered_set.begin(), unordered_set.end());
+//        }
+//
+//        // add the mesh to the list
+//        std::shared_ptr<open3d::geometry::TriangleMesh> mesh_ptr = std::make_shared<open3d::geometry::TriangleMesh>(mesh);
+//        meshes.push_back(mesh_ptr);
+//        adjs.push_back(adj);
+//    }
 
 
     /* Initialize the line that marks the minimum distances */
@@ -182,7 +205,6 @@ int main(int argc, char *argv[]) {
 //                std::cout << "pair: " << j << " " << candidate.id << std::endl;
             }
         }
-
 #else
         for (size_t i = 0; i < meshes.size(); i++) {
             for (size_t j = 0; j < meshes.size(); j++) {
@@ -230,7 +252,7 @@ int main(int argc, char *argv[]) {
             }
             // update results
             collide_sequential = collide_sequential || collide;
-            double distance = (p1 - p2).norm();
+            double distance = collide ? 0.0 : (p1 - p2).norm();
             double old_distance = distance_sequential[pair.first];
             if (distance < old_distance) {
                 distance_sequential[pair.first] = distance;
@@ -280,12 +302,12 @@ int main(int argc, char *argv[]) {
             Eigen::Vector3d p2 = p2_vector[i];
             bool collide = collide_vector[i] > 0;
             if (collide) {
-                meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0) + meshes[pair.first]->vertex_colors_[0]);
-                meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0) + meshes[pair.second]->vertex_colors_[0]);
+                meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0));
+                meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0));
             }
             // update results
             collide_parallel = collide_parallel || collide;
-            double distance = (p1 - p2).norm();
+            double distance = collide ? 0.0 : (p1 - p2).norm();
             double old_distance = distance_parallel[pair.first];
             if (distance < old_distance) {
                 distance_parallel[pair.first] = distance;
@@ -305,12 +327,12 @@ int main(int argc, char *argv[]) {
             mcd_cuda(meshes[pair.first]->vertices_, adjs[pair.first], meshes[pair.second]->vertices_, adjs[pair.second], p1, p2,
                     collide, 1e-3);
             if (collide) {
-                meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0) + meshes[pair.first]->vertex_colors_[0]);
-                meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0) + meshes[pair.second]->vertex_colors_[0]);
+                meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0) );
+                meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0) );
             }
             // update results
             collide_parallel = collide_parallel || collide;
-            double distance = (p1 - p2).norm();
+            double distance = collide ? 0.0 : (p1 - p2).norm();
             double old_distance = distance_parallel[pair.first];
             if (distance < old_distance) {
                 distance_parallel[pair.first] = distance;
