@@ -131,17 +131,26 @@ __device__ void simplex_origin_lambda(Eigen::Vector3d *vertices1,
     __syncthreads();
 
     //// Precompute diffs (c-space edges)
+#ifdef PRECOMPUTE
     if (threadIdx.x < 25) {
-        diffs[threadIdx.x][0] = vects[vect2diff_map[threadIdx.x][1]][0] - vects[vect2diff_map[threadIdx.x][0]][0];
-        diffs[threadIdx.x][1] = vects[vect2diff_map[threadIdx.x][1]][1] - vects[vect2diff_map[threadIdx.x][0]][1];
-        diffs[threadIdx.x][2] = vects[vect2diff_map[threadIdx.x][1]][2] - vects[vect2diff_map[threadIdx.x][0]][2];
+        int i = threadIdx.x;
+#else
+    for (int i = 0; i < 25; i++) {
+#endif
+        diffs[i][0] = vects[vect2diff_map[i][1]][0] - vects[vect2diff_map[i][0]][0];
+        diffs[i][1] = vects[vect2diff_map[i][1]][1] - vects[vect2diff_map[i][0]][1];
+        diffs[i][2] = vects[vect2diff_map[i][1]][2] - vects[vect2diff_map[i][0]][2];
     }
 
     __syncthreads();
 
     //// Precompute dots (c-space dot products)
+#ifdef PRECOMPUTE
     if (threadIdx.x < 25) {
         int i = threadIdx.x;
+#else
+    for (int i = 0; i < 25; i++) {
+#endif
         for (int j = 0; j < 25; j++) {
             dots[i][j] = diffs[i][0] * diffs[j][0] + diffs[i][1] * diffs[j][1] + diffs[i][2] * diffs[j][2];
         }
@@ -150,8 +159,12 @@ __device__ void simplex_origin_lambda(Eigen::Vector3d *vertices1,
     __syncthreads();
 
     //// Precompute crosses & areas (c-space cross products)
+#ifdef PRECOMPUTE
     if (threadIdx.x < 25) {
         int i = threadIdx.x;
+#else
+    for (int i = 0; i < 25; i++) {
+#endif
         for (int j = 0; j < 25; j++) {
             cross(diffs[i], diffs[j], crosses[i][j]);
             areasqs[i][j] = crosses[i][j][0] * crosses[i][j][0] + crosses[i][j][1] * crosses[i][j][1] +

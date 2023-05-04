@@ -10,13 +10,14 @@
 #include <open3d/Open3D.h>
 
 #include "lib/aabb.h"
-#include "mcd_naive.h"
 #include "mcd.cuh"
 
 //#define USE_NAIVE
 #define USE_AABB_TREE
-//#define PARALLEL_ONLY
+#define PARALLEL_ONLY
 #define BATCH_PARALLEL
+#define USE_RANDOM_MESHES
+#define PRECOMPUTE
 
 
 int main(int argc, char *argv[]) {
@@ -30,9 +31,7 @@ int main(int argc, char *argv[]) {
 
     /* Get the arguments */
     std::string input_file_path = argv[1];
-    double collision_margin = (argc == 3) ? std::stod(argv[2]) : 0.0;
-    collision_margin = std::numeric_limits<double>::max();
-    collision_margin = 0.5;
+    double collision_margin = (argc == 3) ? std::stod(argv[2]) : std::numeric_limits<double>::max();
 
     /* Load the inputs */
     std::vector<std::string> model_file_paths;
@@ -66,17 +65,17 @@ int main(int argc, char *argv[]) {
 
 
     /* Load the models */
-    std::vector< std::shared_ptr<open3d::geometry::TriangleMesh> > meshes; // meshes
-    std::vector< std::vector< std::vector<int> > > adjs; // adjacency lists
+    std::vector<std::shared_ptr<open3d::geometry::TriangleMesh> > meshes; // meshes
+    std::vector<std::vector<std::vector<int> > > adjs; // adjacency lists
     open3d::io::ReadTriangleMeshOptions options;
     options.enable_post_processing = false;
     options.print_progress = false;
 
+#ifdef USE_RANDOM_MESHES
     // create meshes programatically
-    /*
     srand(time(NULL));
-    for (size_t i = 0; i < 10; i++) {
-        auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(1.0, 10);
+    for (size_t i = 0; i < 100; i++) {
+        auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(3.0, 10);
         mesh_1->ComputeVertexNormals();
         mesh_1->ComputeAdjacencyList();
         mesh_1->Translate({rand() % 100, rand() % 100, rand() % 100});
@@ -92,8 +91,7 @@ int main(int argc, char *argv[]) {
         meshes.push_back(mesh_1);
         adjs.push_back(adj);
     }
-    */
-
+#else
     // load the meshes from OBJ files
     for (size_t i = 0; i < model_file_paths.size(); i++) {
         // read a mesh from OBJ file
@@ -111,16 +109,18 @@ int main(int argc, char *argv[]) {
         mesh.ComputeAdjacencyList();
 
         // extract the adjacency list
-        std::vector< std::vector<int> > adj(mesh.adjacency_list_.size());
-        for (const auto& unordered_set : mesh.adjacency_list_) {
+        std::vector<std::vector<int> > adj(mesh.adjacency_list_.size());
+        for (const auto &unordered_set: mesh.adjacency_list_) {
             adj.emplace_back(unordered_set.begin(), unordered_set.end());
         }
 
         // add the mesh to the list
-        std::shared_ptr<open3d::geometry::TriangleMesh> mesh_ptr = std::make_shared<open3d::geometry::TriangleMesh>(mesh);
+        std::shared_ptr<open3d::geometry::TriangleMesh> mesh_ptr = std::make_shared<open3d::geometry::TriangleMesh>(
+                mesh);
         meshes.push_back(mesh_ptr);
         adjs.push_back(adj);
     }
+#endif
 
 
     /* Initialize the line that marks the minimum distances */
@@ -158,10 +158,10 @@ int main(int argc, char *argv[]) {
 
     /* Run the MCD algorithm and apply rotation */
     Eigen::Matrix3d R;
-    R << 0.9975021, -0.0705929, 0.0024979,
-           0.0705929, 0.9950042, -0.0705929,
-          0.0024979, 0.0705929, 0.9975021;
-//    R = Eigen::Matrix3d::Identity();
+//    R << 0.9975021, -0.0705929, 0.0024979,
+//           0.0705929, 0.9950042, -0.0705929,
+//          0.0024979, 0.0705929, 0.9975021;
+    R = Eigen::Matrix3d::Identity();
 
     while (true) {
         bool collide_sequential = false, collide_parallel = false;
@@ -170,6 +170,7 @@ int main(int argc, char *argv[]) {
         // we are only applying a uniform rotation to all meshes for demonstration purpose
         for (size_t i = 0; i < meshes.size(); i++) {
             meshes[i]->Rotate(R, meshes[i]->GetCenter());
+            meshes[i]->PaintUniformColor({1.0, 1.0, 1.0});
         }
 
         // clear old lines
@@ -184,13 +185,13 @@ int main(int argc, char *argv[]) {
 
         // list the distance pairs
         std::vector<std::pair<int, int> > pairs;
-#ifdef USE_AABB_TREE
-        AABBTree aabb_tree;
-        std::vector< std::vector<Eigen::Vector3d> > meshes_vertices;
-        for (const auto& mesh : meshes) {
+        std::vector<std::vector<Eigen::Vector3d> > meshes_vertices;
+        for (const auto &mesh: meshes) {
             meshes_vertices.push_back(mesh->vertices_);
         }
         std::vector<AABB> aabbs = extract_AABB(meshes_vertices);
+#ifdef USE_AABB_TREE
+        AABBTree aabb_tree;
         for (const auto& aabb : aabbs) {
             aabb_tree.insert(aabb);
         }
@@ -201,23 +202,32 @@ int main(int argc, char *argv[]) {
             this_box.maximum += Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
             std::vector<AABB> candidates;
             aabb_tree.collect_collision(this_box, candidates);
-#pragma omp critical (pairs)
             for (const auto &candidate: candidates) {
+#pragma omp critical (pairs)
+                {
                 pairs.emplace_back(j, candidate.id);
+                    }
 //                std::cout << "pair: " << j << " " << candidate.id << std::endl;
             }
         }
 #else
+#pragma omp parallel for default(none) shared(meshes, aabbs)
         for (size_t i = 0; i < meshes.size(); i++) {
             for (size_t j = 0; j < meshes.size(); j++) {
-                if (i != j) {
-                    pairs.emplace_back(i, j);
+                AABB this_box = aabbs[j];
+                this_box.minimum -= Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
+                this_box.maximum += Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
+                if (i != j && aabbs[i].intersects(this_box)) {
+#pragma omp critical (pairs)
+                    {
+                        pairs.emplace_back(i, j);
+                    }
                 }
             }
         }
 #endif
 
-        for(const auto &pair: pairs) {
+        for (const auto &pair: pairs) {
             distance_sequential[pair.first] = std::numeric_limits<double>::max();
             distance_parallel[pair.first] = std::numeric_limits<double>::max();
         }
@@ -242,11 +252,12 @@ int main(int argc, char *argv[]) {
 
 #ifndef PARALLEL_ONLY
         auto start_sequential = std::chrono::high_resolution_clock::now();
-        for(const auto &pair: pairs) {
+        for (const auto &pair: pairs) {
             // run the mcd algorithm
             Eigen::Vector3d p1, p2;
             bool collide;
-            mcd_cpu(meshes[pair.first]->vertices_, adjs[pair.first], meshes[pair.second]->vertices_, adjs[pair.second], p1, p2,
+            mcd_cpu(meshes[pair.first]->vertices_, adjs[pair.first], meshes[pair.second]->vertices_, adjs[pair.second],
+                    p1, p2,
                     collide, 1e-3);
             // update results
             collide_sequential = collide_sequential || collide;
@@ -271,13 +282,13 @@ int main(int argc, char *argv[]) {
         std::vector<int> pairs_1;
         std::vector<int> pairs_2;
         long offset = 0;
-        for (const auto& mesh : meshes) {
+        for (const auto &mesh: meshes) {
             vertices.insert(vertices.end(), mesh->vertices_.begin(), mesh->vertices_.end());
             vertices_offset.push_back(offset);
             vertices_size.push_back(mesh->vertices_.size());
             offset += mesh->vertices_.size();
         }
-        for (const auto& pair : pairs) {
+        for (const auto &pair: pairs) {
             pairs_1.push_back(pair.first);
             pairs_2.push_back(pair.second);
         }
@@ -290,15 +301,19 @@ int main(int argc, char *argv[]) {
         std::vector<char> collide_vector(pairs.size());
 
         // run the mcd algorithm
-        mcd_cuda_batch(vertices, vertices_offset, vertices_size, pairs_1, pairs_2, p1_vector, p2_vector, collide_vector, 1e-3);
-
+        mcd_cuda_batch(vertices, vertices_offset, vertices_size, pairs_1, pairs_2, p1_vector, p2_vector, collide_vector,
+                       1e-3);
         // update results
-        for(int i = 0; i < pairs.size(); i++) {
+        for (int i = 0; i < pairs.size(); i++) {
             const auto &pair = pairs[i];
             // run the mcd algorithm
             Eigen::Vector3d p1 = p1_vector[i];
             Eigen::Vector3d p2 = p2_vector[i];
             bool collide = collide_vector[i] > 0;
+            if (collide) {
+                meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0) );
+                meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0) );
+            }
             // update results
             collide_parallel = collide_parallel || collide;
             double distance = collide ? 0.0 : (p1 - p2).norm();
@@ -321,8 +336,8 @@ int main(int argc, char *argv[]) {
             mcd_cuda(meshes[pair.first]->vertices_, adjs[pair.first], meshes[pair.second]->vertices_, adjs[pair.second], p1, p2,
                     collide, 1e-3);
             if (collide) {
-                meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0) );
-                meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(0.0, 0.0, 1.0) );
+                meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0) );
+                meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0) );
             }
             // update results
             collide_parallel = collide_parallel || collide;
