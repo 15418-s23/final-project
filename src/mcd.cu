@@ -136,6 +136,7 @@ __device__ void simplex_origin_lambda(Eigen::Vector3d *vertices1,
         int i = threadIdx.x;
 #else
     for (int i = 0; i < 25; i++) {
+        if (!mainthread) continue;
 #endif
         diffs[i][0] = vects[vect2diff_map[i][1]][0] - vects[vect2diff_map[i][0]][0];
         diffs[i][1] = vects[vect2diff_map[i][1]][1] - vects[vect2diff_map[i][0]][1];
@@ -150,6 +151,7 @@ __device__ void simplex_origin_lambda(Eigen::Vector3d *vertices1,
         int i = threadIdx.x;
 #else
     for (int i = 0; i < 25; i++) {
+        if (!mainthread) continue;
 #endif
         for (int j = 0; j < 25; j++) {
             dots[i][j] = diffs[i][0] * diffs[j][0] + diffs[i][1] * diffs[j][1] + diffs[i][2] * diffs[j][2];
@@ -164,6 +166,7 @@ __device__ void simplex_origin_lambda(Eigen::Vector3d *vertices1,
         int i = threadIdx.x;
 #else
     for (int i = 0; i < 25; i++) {
+        if (!mainthread) continue;
 #endif
         for (int j = 0; j < 25; j++) {
             cross(diffs[i], diffs[j], crosses[i][j]);
