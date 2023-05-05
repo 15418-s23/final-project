@@ -8,13 +8,14 @@
 #include <thread>
 #include <chrono>
 #include <open3d/Open3D.h>
+#include <omp.h>
 
 #include "lib/aabb.h"
 #include "mcd.cuh"
 
 //#define USE_NAIVE
-#define USE_AABB_TREE
-//#define PARALLEL_ONLY
+//#define USE_AABB_TREE
+#define PARALLEL_ONLY
 #define BATCH_PARALLEL
 #define USE_RANDOM_MESHES
 
@@ -31,7 +32,8 @@ int main(int argc, char *argv[]) {
     /* Get the arguments */
     std::string input_file_path = argv[1];
     double collision_margin = (argc == 3) ? std::stod(argv[2]) : std::numeric_limits<double>::max();
-    collision_margin = 0;
+    collision_margin = std::numeric_limits<double>::max();
+//    collision_margin = 100;
 
     /* Load the inputs */
     std::vector<std::string> model_file_paths;
@@ -74,11 +76,14 @@ int main(int argc, char *argv[]) {
 #ifdef USE_RANDOM_MESHES
     // create meshes programatically
     srand(time(NULL));
+    long vertices = 0;
     for (size_t i = 0; i < 1000; i++) {
-        auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(2, 30);
+//        auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(2, 10);
+        auto mesh_1 = open3d::geometry::TriangleMesh::CreateCylinder(1, 5, 10, 10);
         mesh_1->ComputeVertexNormals();
         mesh_1->ComputeAdjacencyList();
-        mesh_1->Translate({rand() % 10, rand() % 10, rand() % 10});
+        mesh_1->Translate({rand() % 100, rand() % 100, rand() % 100});
+        vertices += mesh_1->vertices_.size();
 
 
         // extract the adjacency list
@@ -91,6 +96,8 @@ int main(int argc, char *argv[]) {
         meshes.push_back(mesh_1);
         adjs.push_back(adj);
     }
+
+    std::cout << "vertices: " << vertices << std::endl;
 #else
     // load the meshes from OBJ files
     for (size_t i = 0; i < model_file_paths.size(); i++) {
@@ -158,10 +165,10 @@ int main(int argc, char *argv[]) {
 
     /* Run the MCD algorithm and apply rotation */
     Eigen::Matrix3d R;
-//    R << 0.9975021, -0.0705929, 0.0024979,
-//           0.0705929, 0.9950042, -0.0705929,
-//          0.0024979, 0.0705929, 0.9975021;
-    R = Eigen::Matrix3d::Identity();
+    R << 0.9975021, -0.0705929, 0.0024979,
+           0.0705929, 0.9950042, -0.0705929,
+          0.0024979, 0.0705929, 0.9975021;
+//    R = Eigen::Matrix3d::Identity();
 
     while (true) {
         bool collide_sequential = false, collide_parallel = false;
@@ -196,7 +203,7 @@ int main(int argc, char *argv[]) {
         for (const auto& aabb : aabbs) {
             aabb_tree.insert(aabb);
         }
-#pragma omp parallel for default(none) shared(meshes, aabbs)
+#pragma omp parallel for default(none) shared(meshes, aabbs, aabb_tree, collision_margin, pairs)
         for (size_t j = 0; j < meshes.size(); j++) {
             AABB this_box = aabbs[j];
             this_box.minimum -= Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
@@ -212,7 +219,7 @@ int main(int argc, char *argv[]) {
             }
         }
 #else
-#pragma omp parallel for default(none) shared(meshes, aabbs)
+#pragma omp parallel for collapse(2) default(none) shared(meshes, aabbs, collision_margin, pairs)
         for (size_t i = 0; i < meshes.size(); i++) {
             for (size_t j = 0; j < meshes.size(); j++) {
                 AABB this_box = aabbs[j];
@@ -227,10 +234,10 @@ int main(int argc, char *argv[]) {
             }
         }
 #endif
+
         auto end_filtering = std::chrono::high_resolution_clock::now();
-        double elapsed_filtering = std::chrono::duration_cast<std::chrono::milliseconds>(end_filtering - start_filtering).count();
-        std::cout << "filtering time: " << elapsed_filtering << " ms" << std::endl;
-        continue;
+        double elapsed_filtering = std::chrono::duration_cast<std::chrono::microseconds>(end_filtering - start_filtering).count();
+        std::cout << "filtering time: " << elapsed_filtering << " us" << std::endl;
 
         for (const auto &pair: pairs) {
             distance_sequential[pair.first] = std::numeric_limits<double>::max();
@@ -369,7 +376,7 @@ int main(int argc, char *argv[]) {
 
         // report runtime for both sequential and parallel
         std::cout << "----------------------------------------" << std::endl;
-        std::cout << "filtering      : " << elapsed_filtering << " us" << std::endl;
+//        std::cout << "filtering      : " << elapsed_filtering << " us" << std::endl;
 #ifdef USE_NAIVE
         std::cout << "naive      : " << elapsed_naive << " ms" << std::endl;
         std::cout << "    collide: " << collide_naive << ", minimum distance: " << minimum_distance_naive << std::endl;

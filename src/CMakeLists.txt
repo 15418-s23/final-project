@@ -6,7 +6,7 @@ set(CMAKE_BUILD_TYPE Debug)
 set(CUDA_TOOLKIT_ROOT_DIR "/usr/lib/cuda/")
 set(CMAKE_CUDA_COMPILER /usr/bin/nvcc)
 set(CUDA_NVCC_FLAGS "-G -g")
-set(CMAKE_CXX_FLAGS "-O0")
+set(CMAKE_CXX_FLAGS "-O0 -fopenmp")
 project(MCD LANGUAGES CXX CUDA)
 
 if(POLICY CMP0091)

@@ -211,6 +211,7 @@ private:
 
 std::vector<AABB> extract_AABB(std::vector<std::vector<Eigen::Vector3d>> &meshes) {
     std::vector<AABB> aabbs;
+#pragma omp parallel for default(none) shared(aabbs, meshes)
     for (int i = 0; i < meshes.size(); i++) {
         Eigen::Vector3d minimum = meshes[i][0];
         Eigen::Vector3d maximum = meshes[i][0];
@@ -224,7 +225,10 @@ std::vector<AABB> extract_AABB(std::vector<std::vector<Eigen::Vector3d>> &meshes
                 }
             }
         }
-        aabbs.emplace_back(minimum, maximum, i);
+# pragma omp critical
+        {
+            aabbs.emplace_back(minimum, maximum, i);
+        };
     }
     return aabbs;
 }
