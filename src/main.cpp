@@ -15,7 +15,7 @@
 
 //#define USE_NAIVE
 //#define USE_AABB_TREE
-#define PARALLEL_ONLY
+//#define PARALLEL_ONLY
 #define BATCH_PARALLEL
 #define USE_RANDOM_MESHES
 
@@ -38,21 +38,21 @@ std::shared_ptr<open3d::geometry::TriangleMesh> CreateRandomShape() {
             // Create a random sphere
             double radius = std::rand() % 10 + 1;
 
-            return open3d::geometry::TriangleMesh::CreateSphere(radius, 100);
+            return open3d::geometry::TriangleMesh::CreateSphere(radius, 50);
         }
         case 2: {
             // Create a random cylinder
             double radius = std::rand() % 10 + 1;
             double height = std::rand() % 40 + 1;
 
-            return open3d::geometry::TriangleMesh::CreateCylinder(radius, height, 100);
+            return open3d::geometry::TriangleMesh::CreateCylinder(radius, height, 50);
         }
         case 3: {
             // Create a random cone
             double radius = std::rand() % 20 + 1;
             double height = std::rand() % 40 + 1;
 
-            return open3d::geometry::TriangleMesh::CreateCone(radius, height, 100);
+            return open3d::geometry::TriangleMesh::CreateCone(radius, height, 50);
         }
         default:
             return nullptr;
@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
     std::string input_file_path = argv[1];
     double collision_margin = (argc == 3) ? std::stod(argv[2]) : std::numeric_limits<double>::max();
     collision_margin = std::numeric_limits<double>::max();
-//    collision_margin = 100;
+    collision_margin = 20;
 
     /* Load the inputs */
     std::vector<std::string> model_file_paths;
@@ -203,11 +203,13 @@ int main(int argc, char *argv[]) {
 
 
     /* Run the MCD algorithm and apply rotation */
-    Eigen::Matrix3d R;
-    R << 0.9975021, -0.0705929, 0.0024979,
+    Eigen::Matrix3d R1, R2;
+    R1 << 0.9975021, -0.0705929, 0.0024979,
            0.0705929, 0.9950042, -0.0705929,
           0.0024979, 0.0705929, 0.9975021;
-//    R = Eigen::Matrix3d::Identity();
+    R2 << 0.9702243, -0.1855065,  0.1557308,
+           0.1557308,  0.9702243,  0.1855065,
+          -0.1855065, -0.1557308,  0.9702243;
 
     while (true) {
         bool collide_sequential = false, collide_parallel = false;
@@ -215,7 +217,10 @@ int main(int argc, char *argv[]) {
 
         // we are only applying a uniform rotation to all meshes for demonstration purpose
         for (size_t i = 0; i < meshes.size(); i++) {
-            meshes[i]->Rotate(R, meshes[i]->GetCenter());
+            if (i % 2 == 0)
+                meshes[i]->Rotate(R1, meshes[i]->GetCenter());
+            else
+                meshes[i]->Rotate(R2, meshes[i]->GetCenter());
             meshes[i]->PaintUniformColor({1.0, 1.0, 1.0});
         }
 
@@ -313,14 +318,14 @@ int main(int argc, char *argv[]) {
             bool collide;
             mcd_cpu(meshes[pair.first]->vertices_, adjs[pair.first], meshes[pair.second]->vertices_, adjs[pair.second],
                     p1, p2,
-                    collide, 1e-3);
+                    collide, 1e-6);
             // update results
 #pragma omp critical (collide_sequential)
             {
-//                if (collide) {
-//                    meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0) );
-//                    meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0) );
-//                }
+                if (collide) {
+                    meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0) );
+                    meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0) );
+                }
                 collide_sequential = collide_sequential || collide;
                 double distance = collide ? 0.0 : (p1 - p2).norm();
                 double old_distance = distance_sequential[pair.first];
@@ -364,7 +369,7 @@ int main(int argc, char *argv[]) {
 
         // run the mcd algorithm
         mcd_cuda_batch(vertices, vertices_offset, vertices_size, pairs_1, pairs_2, p1_vector, p2_vector, collide_vector,
-                       1e-3);
+                       1e-6);
         // update results
         for (int i = 0; i < pairs.size(); i++) {
             const auto &pair = pairs[i];
@@ -396,7 +401,7 @@ int main(int argc, char *argv[]) {
             Eigen::Vector3d p1, p2;
             bool collide;
             mcd_cuda(meshes[pair.first]->vertices_, adjs[pair.first], meshes[pair.second]->vertices_, adjs[pair.second], p1, p2,
-                    collide, 1e-3);
+                    collide, 1e-6);
             if (collide) {
                 meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0) );
                 meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0) );
