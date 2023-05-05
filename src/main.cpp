@@ -15,8 +15,8 @@
 
 //#define USE_NAIVE
 //#define USE_AABB_TREE
-//#define PARALLEL_ONLY
-//#define BATCH_PARALLEL
+#define PARALLEL_ONLY
+#define BATCH_PARALLEL
 #define USE_RANDOM_MESHES
 
 std::shared_ptr<open3d::geometry::TriangleMesh> CreateRandomShape() {
@@ -28,31 +28,31 @@ std::shared_ptr<open3d::geometry::TriangleMesh> CreateRandomShape() {
     switch (shape) {
         case 0: {
             // Create a random box
-            double width = std::rand() % 5 + 1;
-            double height = std::rand() % 5 + 1;
-            double depth = std::rand() % 5 + 1;
+            double width = std::rand() % 10 + 1;
+            double height = std::rand() % 10 + 1;
+            double depth = std::rand() % 10 + 1;
 
             return open3d::geometry::TriangleMesh::CreateBox(width, height, depth);
         }
         case 1: {
             // Create a random sphere
-            double radius = std::rand() % 5 + 1;
+            double radius = std::rand() % 10 + 1;
 
-            return open3d::geometry::TriangleMesh::CreateSphere(radius);
+            return open3d::geometry::TriangleMesh::CreateSphere(radius, 100);
         }
         case 2: {
             // Create a random cylinder
-            double radius = std::rand() % 5 + 1;
-            double height = std::rand() % 15 + 1;
+            double radius = std::rand() % 10 + 1;
+            double height = std::rand() % 40 + 1;
 
-            return open3d::geometry::TriangleMesh::CreateCylinder(radius, height);
+            return open3d::geometry::TriangleMesh::CreateCylinder(radius, height, 100);
         }
         case 3: {
             // Create a random cone
-            double radius = std::rand() % 10 + 1;
-            double height = std::rand() % 10 + 1;
+            double radius = std::rand() % 20 + 1;
+            double height = std::rand() % 40 + 1;
 
-            return open3d::geometry::TriangleMesh::CreateCone(radius, height);
+            return open3d::geometry::TriangleMesh::CreateCone(radius, height, 100);
         }
         default:
             return nullptr;
@@ -116,12 +116,12 @@ int main(int argc, char *argv[]) {
     // create meshes programatically
     srand(time(NULL));
     long vertices = 0;
-    for (size_t i = 0; i < 10; i++) {
+    for (size_t i = 0; i < 100; i++) {
         auto mesh_1 = CreateRandomShape();
 //        auto mesh_1 = open3d::geometry::TriangleMesh::CreateCylinder(1, 5, 10, 10);
         mesh_1->ComputeVertexNormals();
         mesh_1->ComputeAdjacencyList();
-        mesh_1->Translate({rand() % 100, rand() % 100, rand() % 100});
+        mesh_1->Translate({rand() % 200, rand() % 200, rand() % 200});
         vertices += mesh_1->vertices_.size();
 
 
@@ -215,7 +215,7 @@ int main(int argc, char *argv[]) {
 
         // we are only applying a uniform rotation to all meshes for demonstration purpose
         for (size_t i = 0; i < meshes.size(); i++) {
-//            meshes[i]->Rotate(R, meshes[i]->GetCenter());
+            meshes[i]->Rotate(R, meshes[i]->GetCenter());
             meshes[i]->PaintUniformColor({1.0, 1.0, 1.0});
         }
 
@@ -261,14 +261,14 @@ int main(int argc, char *argv[]) {
             }
         }
 #else
-//#pragma omp parallel for collapse(2) default(none) shared(meshes, aabbs, collision_margin, pairs)
+#pragma omp parallel for collapse(2) default(none) shared(meshes, aabbs, collision_margin, pairs)
         for (size_t i = 0; i < meshes.size(); i++) {
             for (size_t j = 0; j < meshes.size(); j++) {
                 AABB this_box = aabbs[j];
                 this_box.minimum -= Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
                 this_box.maximum += Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
                 if (i != j && aabbs[i].intersects(this_box)) {
-//#pragma omp critical (pairs)
+#pragma omp critical (pairs)
                     {
                         pairs.emplace_back(i, j);
                     }

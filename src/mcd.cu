@@ -18,34 +18,51 @@
 //    }
 //}
 __device__ void support_function_kernel(Eigen::Vector3d *vertices,
-                                        int vertices_size,
+                                        long vertices_size,
                                         const Eigen::Vector3d &direction,
                                         long *shared_support_idx) {
+    __shared__ long support_idx_arr[32];
+    __shared__ double support_value_arr[32];
+//    if (threadIdx.x == 0) {
+//        printf("vertices_size: %d\n", vertices_size);
+//    }
+    __syncthreads();
+
     long range_num = vertices_size / blockDim.x + 1;
     long range_start = threadIdx.x * range_num;
-    if (range_start < vertices_size) {
-        long support_idx = range_start;
-        double support_value = vertices[support_idx].dot(direction);
+    long range_end = range_start + range_num;
+    if (range_end > vertices_size) {
+        range_end = vertices_size;
+    }
+    long working_thread_num = vertices_size / range_num + (vertices_size % range_num == 0 ? 0 : 1);
 
-        for (long i = range_start + 1; i < range_start + range_num && i < vertices_size; i++) {
-            double support_value_new = vertices[i].dot(direction);
-            if (support_value_new > support_value) {
-                support_value = support_value_new;
-                support_idx = i;
+    long support_idx = range_start;
+    double support_value = vertices[support_idx].dot(direction);
+
+    for (long i = range_start + 1; i < range_end; i++) {
+        double support_value_new = vertices[i].dot(direction);
+        if (support_value_new > support_value) {
+            support_value = support_value_new;
+            support_idx = i;
+        }
+    }
+//    printf("range: %ld, %ld, support_idx: %ld, support_value: %f\n", range_start, range_end, support_idx, support_value);
+    support_idx_arr[threadIdx.x] = support_idx;
+    support_value_arr[threadIdx.x] = support_value;
+
+    __syncthreads();
+
+    if (threadIdx.x == 0){
+        support_idx = support_idx_arr[0];
+        support_value = support_value_arr[0];
+        for (int i = 0; i < working_thread_num; i++) {
+            if (support_value_arr[i] > support_value) {
+                support_value = support_value_arr[i];
+                support_idx = support_idx_arr[i];
             }
         }
-
-        long old_support_idx, assumed_support_idx;
-        do {
-            assumed_support_idx = *shared_support_idx;
-            if (support_value > vertices[assumed_support_idx].dot(direction)) {
-                old_support_idx = atomicCAS((unsigned long long int *) shared_support_idx,
-                                            (unsigned long long int) assumed_support_idx,
-                                            (unsigned long long int) support_idx);
-            } else {
-                break;
-            }
-        } while (old_support_idx != assumed_support_idx);
+//        printf("support_idx: %ld, support_value: %f\n", support_idx, support_value);
+        *shared_support_idx = support_idx;
     }
 
     __syncthreads();
@@ -328,9 +345,9 @@ __device__ void simplex_origin_lambda(Eigen::Vector3d *vertices1,
 }
 
 __global__ void mcd_kernel(Eigen::Vector3d *vertices1_gpu,
-                           const int *vertices1_gpu_size,
+                           const long *vertices1_gpu_size,
                            Eigen::Vector3d *vertices2_gpu,
-                           const int *vertices2_gpu_size,
+                           const long *vertices2_gpu_size,
                            Eigen::Vector3d *point1_gpu,
                            Eigen::Vector3d *point2_gpu,
                            bool *collide_gpu,
@@ -684,9 +701,9 @@ void mcd_cuda(std::vector<Eigen::Vector3d> &vertices1,
 
     // Copy data to GPU
     Eigen::Vector3d *vertices1_gpu;
-    int *vertices1_gpu_size;
+    long *vertices1_gpu_size;
     Eigen::Vector3d *vertices2_gpu;
-    int *vertices2_gpu_size;
+    long *vertices2_gpu_size;
     Eigen::Vector3d *point1_gpu;
     Eigen::Vector3d *point2_gpu;
     bool *collide_gpu;
@@ -711,7 +728,7 @@ void mcd_cuda(std::vector<Eigen::Vector3d> &vertices1,
     cudaMemcpy(eps_gpu, &eps, sizeof(double), cudaMemcpyHostToDevice);
 
     // Run kernel
-    dim3 block(1024, 1, 1);
+    dim3 block(32, 1, 1);
     mcd_kernel<<<1, block>>>(vertices1_gpu, vertices1_gpu_size,
                              vertices2_gpu, vertices2_gpu_size,
                              point1_gpu, point2_gpu, collide_gpu, eps_gpu);
@@ -819,14 +836,20 @@ int support_function(std::vector<Eigen::Vector3d> &vertices,
             }
         }
     } else {
-        // Perform brute force search
-        support_index = std::distance(vertices.begin(),
-                                      std::max_element(vertices.begin(),
-                                                       vertices.end(),
-                                                       [&direction](const Eigen::Vector3d &a,
-                                                                    const Eigen::Vector3d &b) {
-                                                           return a.dot(direction) < b.dot(direction);
-                                                       }));
+#pragma omp parallel for
+        for (int i = 0; i < vertices.size(); ++i) {
+            if (i == 0 || vertices[i].dot(direction) > vertices[support_index].dot(direction)) {
+                support_index = i;
+            }
+        }
+//        // Perform brute force search
+//        support_index = std::distance(vertices.begin(),
+//                                      std::max_element(vertices.begin(),
+//                                                       vertices.end(),
+//                                                       [&direction](const Eigen::Vector3d &a,
+//                                                                    const Eigen::Vector3d &b) {
+//                                                           return a.dot(direction) < b.dot(direction);
+//                                                       }));
     }
     return support_index;
 }
