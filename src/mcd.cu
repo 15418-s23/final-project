@@ -825,7 +825,7 @@ int support_function(std::vector<Eigen::Vector3d> &vertices,
                      const Eigen::Vector3d &direction,
                      int start_vertex) {
     int support_index;
-    start_vertex = -1;
+//    start_vertex = -1;
     if (start_vertex >= 0) {
         // Perform hill climbing
         support_index = start_vertex;
@@ -855,6 +855,30 @@ int support_function(std::vector<Eigen::Vector3d> &vertices,
         }
     } else {
         // Perform brute force search
+//        int min_index = 0;
+//        double min_value = vertices[0].dot(direction);
+//#pragma omp parallel
+//        {
+//            int min_index_private = 0;
+//            double min_value_private = std::numeric_limits<double>::max();
+//#pragma omp for nowait
+//            for (int i = 1; i < vertices.size(); ++i) {
+//                double value = vertices[i].dot(direction);
+//                if (value > min_value) {
+//                    min_index = i;
+//                    min_value = value;
+//                }
+//            }
+//#pragma omp critical
+//            {
+//                if (min_value_private < min_value) {
+//                    min_index = min_index_private;
+//                    min_value = min_value_private;
+//                }
+//            }
+//        }
+//        support_index = min_value_privateindex;
+
         support_index = std::distance(vertices.begin(),
                                       std::max_element(vertices.begin(),
                                                        vertices.end(),

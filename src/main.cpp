@@ -78,8 +78,8 @@ int main(int argc, char *argv[]) {
     srand(time(NULL));
     long vertices = 0;
     for (size_t i = 0; i < 1000; i++) {
-//        auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(2, 10);
-        auto mesh_1 = open3d::geometry::TriangleMesh::CreateCylinder(1, 5, 10, 10);
+        auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(2, 5);
+//        auto mesh_1 = open3d::geometry::TriangleMesh::CreateCylinder(1, 5, 10, 10);
         mesh_1->ComputeVertexNormals();
         mesh_1->ComputeAdjacencyList();
         mesh_1->Translate({rand() % 100, rand() % 100, rand() % 100});
@@ -203,7 +203,7 @@ int main(int argc, char *argv[]) {
         for (const auto& aabb : aabbs) {
             aabb_tree.insert(aabb);
         }
-#pragma omp parallel for default(none) shared(meshes, aabbs, aabb_tree, collision_margin, pairs)
+//#pragma omp parallel for default(none) shared(meshes, aabbs, aabb_tree, collision_margin, pairs)
         for (size_t j = 0; j < meshes.size(); j++) {
             AABB this_box = aabbs[j];
             this_box.minimum -= Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
@@ -211,7 +211,7 @@ int main(int argc, char *argv[]) {
             std::vector<AABB> candidates;
             aabb_tree.collect_collision(this_box, candidates);
             for (const auto &candidate: candidates) {
-#pragma omp critical (pairs)
+//#pragma omp critical (pairs)
                 {
                 pairs.emplace_back(j, candidate.id);
                     }
@@ -264,6 +264,7 @@ int main(int argc, char *argv[]) {
 
 #ifndef PARALLEL_ONLY
         auto start_sequential = std::chrono::high_resolution_clock::now();
+#pragma omp parallel for default(none) shared(meshes, pairs, distance_sequential, collide_sequential, line_sets_sequential, adjs)
         for (const auto &pair: pairs) {
             // run the mcd algorithm
             Eigen::Vector3d p1, p2;
@@ -272,13 +273,16 @@ int main(int argc, char *argv[]) {
                     p1, p2,
                     collide, 1e-3);
             // update results
-            collide_sequential = collide_sequential || collide;
-            double distance = collide ? 0.0 : (p1 - p2).norm();
-            double old_distance = distance_sequential[pair.first];
-            if (distance < old_distance) {
-                distance_sequential[pair.first] = distance;
-                line_sets_sequential[pair.first]->points_[0] = p1;
-                line_sets_sequential[pair.first]->points_[1] = p2;
+#pragma omp critical (collide_sequential)
+            {
+                collide_sequential = collide_sequential || collide;
+                double distance = collide ? 0.0 : (p1 - p2).norm();
+                double old_distance = distance_sequential[pair.first];
+                if (distance < old_distance) {
+                    distance_sequential[pair.first] = distance;
+                    line_sets_sequential[pair.first]->points_[0] = p1;
+                    line_sets_sequential[pair.first]->points_[1] = p2;
+                }
             }
         }
         auto end_sequential = std::chrono::high_resolution_clock::now();
