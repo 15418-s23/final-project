@@ -15,10 +15,49 @@
 
 //#define USE_NAIVE
 //#define USE_AABB_TREE
-#define PARALLEL_ONLY
-#define BATCH_PARALLEL
+//#define PARALLEL_ONLY
+//#define BATCH_PARALLEL
 #define USE_RANDOM_MESHES
 
+std::shared_ptr<open3d::geometry::TriangleMesh> CreateRandomShape() {
+    // Seed the random number generator with the current time
+
+    // Choose a random shape: box (0), sphere (1), cylinder (2), or cone (3)
+    int shape = std::rand() % 4;
+
+    switch (shape) {
+        case 0: {
+            // Create a random box
+            double width = std::rand() % 5 + 1;
+            double height = std::rand() % 5 + 1;
+            double depth = std::rand() % 5 + 1;
+
+            return open3d::geometry::TriangleMesh::CreateBox(width, height, depth);
+        }
+        case 1: {
+            // Create a random sphere
+            double radius = std::rand() % 5 + 1;
+
+            return open3d::geometry::TriangleMesh::CreateSphere(radius);
+        }
+        case 2: {
+            // Create a random cylinder
+            double radius = std::rand() % 5 + 1;
+            double height = std::rand() % 15 + 1;
+
+            return open3d::geometry::TriangleMesh::CreateCylinder(radius, height);
+        }
+        case 3: {
+            // Create a random cone
+            double radius = std::rand() % 10 + 1;
+            double height = std::rand() % 10 + 1;
+
+            return open3d::geometry::TriangleMesh::CreateCone(radius, height);
+        }
+        default:
+            return nullptr;
+    }
+}
 
 int main(int argc, char *argv[]) {
 
@@ -77,8 +116,8 @@ int main(int argc, char *argv[]) {
     // create meshes programatically
     srand(time(NULL));
     long vertices = 0;
-    for (size_t i = 0; i < 1000; i++) {
-        auto mesh_1 = open3d::geometry::TriangleMesh::CreateSphere(2, 5);
+    for (size_t i = 0; i < 10; i++) {
+        auto mesh_1 = CreateRandomShape();
 //        auto mesh_1 = open3d::geometry::TriangleMesh::CreateCylinder(1, 5, 10, 10);
         mesh_1->ComputeVertexNormals();
         mesh_1->ComputeAdjacencyList();
@@ -176,7 +215,7 @@ int main(int argc, char *argv[]) {
 
         // we are only applying a uniform rotation to all meshes for demonstration purpose
         for (size_t i = 0; i < meshes.size(); i++) {
-            meshes[i]->Rotate(R, meshes[i]->GetCenter());
+//            meshes[i]->Rotate(R, meshes[i]->GetCenter());
             meshes[i]->PaintUniformColor({1.0, 1.0, 1.0});
         }
 
@@ -188,6 +227,9 @@ int main(int argc, char *argv[]) {
         for (const auto &line_set_parallel: line_sets_parallel) {
             line_set_parallel->points_[0] = {0.0, 0.0, 0.0};
             line_set_parallel->points_[1] = {0.0, 0.0, 0.0};
+        }
+        for (const auto &mesh: meshes) {
+            mesh->PaintUniformColor({1.0, 1.0, 1.0});
         }
 
         // list the distance pairs
@@ -219,14 +261,14 @@ int main(int argc, char *argv[]) {
             }
         }
 #else
-#pragma omp parallel for collapse(2) default(none) shared(meshes, aabbs, collision_margin, pairs)
+//#pragma omp parallel for collapse(2) default(none) shared(meshes, aabbs, collision_margin, pairs)
         for (size_t i = 0; i < meshes.size(); i++) {
             for (size_t j = 0; j < meshes.size(); j++) {
                 AABB this_box = aabbs[j];
                 this_box.minimum -= Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
                 this_box.maximum += Eigen::Vector3d(collision_margin, collision_margin, collision_margin);
                 if (i != j && aabbs[i].intersects(this_box)) {
-#pragma omp critical (pairs)
+//#pragma omp critical (pairs)
                     {
                         pairs.emplace_back(i, j);
                     }
@@ -275,6 +317,10 @@ int main(int argc, char *argv[]) {
             // update results
 #pragma omp critical (collide_sequential)
             {
+//                if (collide) {
+//                    meshes[pair.first]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0) );
+//                    meshes[pair.second]->PaintUniformColor(Eigen::Vector3d(1.0, 0.0, 0.0) );
+//                }
                 collide_sequential = collide_sequential || collide;
                 double distance = collide ? 0.0 : (p1 - p2).norm();
                 double old_distance = distance_sequential[pair.first];

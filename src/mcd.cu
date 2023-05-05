@@ -4,8 +4,6 @@
 #include <open3d/3rdparty/Eigen/Geometry>
 #include "mcd.cuh"
 
-#define PRECOMPUTE_TERMS
-
 //__device__ void support_function_kernel(Eigen::Vector3d *vertices,
 //                                        int vertices_size,
 //                                        const Eigen::Vector3d &direction,
@@ -115,8 +113,8 @@ __device__ void simplex_origin_lambda(Eigen::Vector3d *vertices1,
             {0, 1, 2}
     };
 
-    // PRECOMPUTE_TERMS
-    //// PRECOMPUTE_TERMS vects (basically c-space points)
+    // Precompute
+    //// Precompute vects (basically c-space points)
     if (mainthread) {
         for (int i = 0; i < 5; i++) {
             vects[i][0] = 0;
@@ -132,48 +130,26 @@ __device__ void simplex_origin_lambda(Eigen::Vector3d *vertices1,
 
     __syncthreads();
 
-    //// PRECOMPUTE_TERMS diffs (c-space edges)
-#ifdef PRECOMPUTE_TERMS
+    //// Precompute diffs (c-space edges)
     if (threadIdx.x < 25) {
-        int i = threadIdx.x;
-        diffs[i][0] = vects[vect2diff_map[i][1]][0] - vects[vect2diff_map[i][0]][0];
-        diffs[i][1] = vects[vect2diff_map[i][1]][1] - vects[vect2diff_map[i][0]][1];
-        diffs[i][2] = vects[vect2diff_map[i][1]][2] - vects[vect2diff_map[i][0]][2];
+        diffs[threadIdx.x][0] = vects[vect2diff_map[threadIdx.x][1]][0] - vects[vect2diff_map[threadIdx.x][0]][0];
+        diffs[threadIdx.x][1] = vects[vect2diff_map[threadIdx.x][1]][1] - vects[vect2diff_map[threadIdx.x][0]][1];
+        diffs[threadIdx.x][2] = vects[vect2diff_map[threadIdx.x][1]][2] - vects[vect2diff_map[threadIdx.x][0]][2];
     }
-#else
-    if (mainthread) {
-        for (int i = 0; i < 25; i++) {
-            diffs[i][0] = vects[vect2diff_map[i][1]][0] - vects[vect2diff_map[i][0]][0];
-            diffs[i][1] = vects[vect2diff_map[i][1]][1] - vects[vect2diff_map[i][0]][1];
-            diffs[i][2] = vects[vect2diff_map[i][1]][2] - vects[vect2diff_map[i][0]][2];
-        }
-    }
-#endif
 
     __syncthreads();
 
-    //// PRECOMPUTE_TERMS dots (c-space dot products)
-#ifdef PRECOMPUTE_TERMS
+    //// Precompute dots (c-space dot products)
     if (threadIdx.x < 25) {
         int i = threadIdx.x;
         for (int j = 0; j < 25; j++) {
             dots[i][j] = diffs[i][0] * diffs[j][0] + diffs[i][1] * diffs[j][1] + diffs[i][2] * diffs[j][2];
         }
     }
-#else
-    if (mainthread) {
-        for (int i = 0; i < 25; i++) {
-            for (int j = 0; j < 25; j++) {
-                dots[i][j] = diffs[i][0] * diffs[j][0] + diffs[i][1] * diffs[j][1] + diffs[i][2] * diffs[j][2];
-            }
-        }
-    }
-#endif
 
     __syncthreads();
 
-    //// PRECOMPUTE_TERMS crosses & areas (c-space cross products)
-#ifdef PRECOMPUTE_TERMS
+    //// Precompute crosses & areas (c-space cross products)
     if (threadIdx.x < 25) {
         int i = threadIdx.x;
         for (int j = 0; j < 25; j++) {
@@ -182,17 +158,6 @@ __device__ void simplex_origin_lambda(Eigen::Vector3d *vertices1,
                             crosses[i][j][2] * crosses[i][j][2];
         }
     }
-#else
-    if (mainthread) {
-        for (int i = 0; i < 25; i++) {
-            for (int j = 0; j < 25; j++) {
-                cross(diffs[i], diffs[j], crosses[i][j]);
-                areasqs[i][j] = crosses[i][j][0] * crosses[i][j][0] + crosses[i][j][1] * crosses[i][j][1] +
-                                crosses[i][j][2] * crosses[i][j][2];
-            }
-        }
-    }
-#endif
 
     __syncthreads();
 
@@ -685,7 +650,7 @@ void mcd_cuda_batch(std::vector<Eigen::Vector3d> &vertices,
     // Run kernel
     dim3 block(32, 1, 1);
     mcd_batch_kernel<<<pair_size, block>>>(vertices_gpu, vertices_offset_gpu, vertices_size_gpu, mesh1_gpu, mesh2_gpu,
-                                           pair_size_gpu, eps_gpu, point1_gpu, point2_gpu, collide_gpu);
+                                    pair_size_gpu, eps_gpu, point1_gpu, point2_gpu, collide_gpu);
 
     cudaDeviceSynchronize();
     // Copy data back to CPU
@@ -825,7 +790,7 @@ int support_function(std::vector<Eigen::Vector3d> &vertices,
                      const Eigen::Vector3d &direction,
                      int start_vertex) {
     int support_index;
-//    start_vertex = -1;
+    start_vertex = -1;
     if (start_vertex >= 0) {
         // Perform hill climbing
         support_index = start_vertex;
@@ -855,30 +820,6 @@ int support_function(std::vector<Eigen::Vector3d> &vertices,
         }
     } else {
         // Perform brute force search
-//        int min_index = 0;
-//        double min_value = vertices[0].dot(direction);
-//#pragma omp parallel
-//        {
-//            int min_index_private = 0;
-//            double min_value_private = std::numeric_limits<double>::max();
-//#pragma omp for nowait
-//            for (int i = 1; i < vertices.size(); ++i) {
-//                double value = vertices[i].dot(direction);
-//                if (value > min_value) {
-//                    min_index = i;
-//                    min_value = value;
-//                }
-//            }
-//#pragma omp critical
-//            {
-//                if (min_value_private < min_value) {
-//                    min_index = min_index_private;
-//                    min_value = min_value_private;
-//                }
-//            }
-//        }
-//        support_index = min_value_privateindex;
-
         support_index = std::distance(vertices.begin(),
                                       std::max_element(vertices.begin(),
                                                        vertices.end(),
