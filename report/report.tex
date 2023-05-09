@@ -41,7 +41,7 @@
 
 
 \section{Summary}
-We implementated a parallel algorithm for computing the minimum distance and point pair between convex meshes using CUDA. We also parallized the lookup function for Axis-Aligned Bounding Box (AABB) Hierarchy using OpenMP to filter mesh pairs that are far away from each other before passing the meshes to our algorithm.
+We implementated a parallel algorithm for computing the minimum distance and point pair between convex meshes using CUDA. We also parallelized the lookup function for Axis-Aligned Bounding Box (AABB) Hierarchy using OpenMP to filter mesh pairs that are far away from each other before passing the meshes to our algorithm.
 We measured the performance of our program on a variety of scenes and compared the speedup of various implementation over a sequential algorithm that checks every pair of triangles.
 
 
@@ -348,7 +348,7 @@ In the naive implementation, we have an outer loop that iterates over object pai
 
 In the GJK implementation, we parallelize the support function by leveraging CUDA threads. The support function finds the farthest point on the Minkowski difference of two convex shapes in a given direction. Since it calculates, and find the vertex whose dot product with the direction vector is the greatest, this makes a good case for parallelism. We parallelize the support function by assigning each CUDA thread to checking a single vertex, and find the maximum among them. We did not consider CPU parallelism since GJK runs in a loop, and the overhead of synchronizing the threads at the end of each iteration would be too large.
 
-In the GJK implementation, we also parallize the calculation of dot products, cross products and areas. We precompute a table of terms, parallized over CUDA threads.
+In the GJK implementation, we also parallize the calculation of dot products, cross products and areas. We precompute a table of terms, parallelized over CUDA threads.
 
 In the Batched GJK implementation, we parallelize over pairs of meshes. That is, we launch a kernel with the grid size being the number of pairs of meshes, and the block size being the number of threads per pair of meshes. The block size is a hyperparameter and has to be greater than 25 (we assign threads to the precomputation of the table of terms statically).
 
